@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>ADO Morning Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -105,6 +106,8 @@
         <label><input type="checkbox" id="show-area" checked onchange="saveSectionPrefs()"> Sprint by area path</label>
         <label><input type="checkbox" id="show-bugs" checked onchange="saveSectionPrefs()"> Bug backlog</label>
         <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
+        <label><input type="checkbox" id="show-completionTrend" checked onchange="saveSectionPrefs()"> Completion trend chart</label>
+        <label><input type="checkbox" id="show-backlogAge" checked onchange="saveSectionPrefs()"> Backlog age chart</label>
       </div>
     </div>
 
@@ -123,6 +126,14 @@
   <section id="sec-burndown">
     <h2>Sprint burndown status</h2>
     <div class="meta" id="meta-burndown"></div>
+    <div style="height:220px"><canvas id="chart-burndown"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px">"Actual" only has one point the first time you run this in a sprint — it fills in day by day as you keep loading the dashboard.</div>
+  </section>
+
+  <section id="sec-completion-trend">
+    <h2>Completion trend — last 14 days</h2>
+    <div class="meta">How many items closed out each day</div>
+    <div style="height:220px"><canvas id="chart-completion-trend"></canvas></div>
   </section>
 
   <section id="sec-completed">
@@ -133,7 +144,7 @@
   </section>
 
   <section id="sec-reopened">
-    <h2>Reopened items (previously Done, now not)</h2>
+    <h2>Reopened items this week (previously Done, now not)</h2>
     <div class="meta" id="meta-reopened"></div>
     <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
     <tbody id="rows-reopened"></tbody></table></div>
@@ -170,6 +181,7 @@
   <section id="sec-workload">
     <h2>Workload by developer</h2>
     <div class="meta" id="meta-workload"></div>
+    <div style="height:220px;margin-bottom:16px"><canvas id="chart-workload"></canvas></div>
     <table><thead><tr><th>Developer</th><th>Items assigned</th></tr></thead>
     <tbody id="rows-workload"></tbody></table>
   </section>
@@ -177,8 +189,15 @@
   <section id="sec-area">
     <h2>Current sprint by area path</h2>
     <div class="meta">Where this sprint's work is concentrated</div>
+    <div style="height:240px;max-width:400px;margin:0 auto 16px"><canvas id="chart-area"></canvas></div>
     <table><thead><tr><th>Area Path</th><th>Items</th></tr></thead>
     <tbody id="rows-area"></tbody></table>
+  </section>
+
+  <section id="sec-backlog-age">
+    <h2>Backlog age distribution</h2>
+    <div class="meta">Bugs, issues, and carried-over sprint items — how long they've sat in their current state</div>
+    <div style="height:220px"><canvas id="chart-backlog-age"></canvas></div>
   </section>
 
   <section id="sec-bugs">
@@ -198,7 +217,7 @@
 <script>
 let lastReport = null; // populated after a successful load, used by sendReport()
 const AGING_THRESHOLD_DAYS = 5;
-const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','workload','area','bugs','issues'];
+const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','workload','area','bugs','issues','completionTrend','backlogAge'];
 
 // ---- tiny storage wrapper: plain localStorage, so this works the same
 // whether opened as a local file or hosted somewhere like GitHub Pages ----
@@ -439,6 +458,49 @@ async function getItems(base, ids, fields) {
   return out;
 }
 
+const CHART_PALETTE = ['#3f51b5', '#00897b', '#f4511e', '#8e24aa', '#43a047', '#fb8c00', '#546e7a', '#c62828', '#00acc1', '#6d4c41'];
+let charts = {}; // keep Chart.js instances so we can destroy/recreate on each reload
+
+function renderBarChart(canvasId, labels, data, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color }] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+function renderPieChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: CHART_PALETTE.slice(0, Math.max(labels.length, 1)) }] },
+    options: { maintainAspectRatio: false },
+  });
+}
+
+function renderLineChart(canvasId, labels, datasets) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
 function fmtDelta(delta, goodWhenUp) {
   if (delta === null || delta === undefined) return '';
   if (delta === 0) return `<div class="delta" style="color:var(--muted)">no change vs prior run</div>`;
@@ -522,6 +584,10 @@ async function loadDashboard() {
                     'System.AssignedTo', 'System.ChangedDate', 'System.IterationPath',
                     'System.AreaPath', 'System.Tags'];
 
+    const now = new Date();
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
+
     setStatus('Fetching completed items...');
     const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
@@ -533,9 +599,10 @@ async function loadDashboard() {
     setStatus('Checking for reopened items...');
     const reopenedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= ${weekStartClause}
               AND ${everCompletedClause}
               AND NOT ${removedOrCompleted}
-              ORDER BY [System.ChangedDate] DESC`, 'Reopened items');
+              ORDER BY [System.ChangedDate] DESC`, 'Reopened items this week');
     const reopenedItems = await getItems(base, reopenedWiql.workItems.map(w => w.id), fields);
 
     setStatus('Checking for blocked items...');
@@ -565,9 +632,6 @@ async function loadDashboard() {
     }
 
     setStatus('Fetching this week\'s completions...');
-    const now = new Date();
-    const daysSinceMonday = (now.getDay() + 6) % 7;
-    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
     const weeklyWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND [System.ChangedDate] >= ${weekStartClause}
@@ -596,6 +660,37 @@ async function loadDashboard() {
     setStatus('Fetching outstanding issues...');
     const issueItems = await fetchOpenBacklog('Issue');
 
+    setStatus('Fetching 14-day completion trend...');
+    const trendWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= @Today - 13
+              AND ${completedClause}`, 'Completion trend (14 days)');
+    const trendItems = await getItems(base, trendWiql.workItems.map(w => w.id), fields);
+
+    // ---- sprint burndown ----
+    let burndownHtml = 'No active sprint with start/finish dates found.';
+    let burndownStatusLabel = 'unknown';
+    let sprintRemainingToday = null;
+    let sprintTotalToday = null;
+    if (currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
+      const start = new Date(currentIter.attributes.startDate);
+      const finish = new Date(currentIter.attributes.finishDate);
+      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
+      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
+      const doneCount = sprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
+      const remainingCount = sprintItems.length - doneCount;
+      sprintRemainingToday = remainingCount;
+      sprintTotalToday = sprintItems.length;
+      const expectedRemainingFrac = daysRemaining / totalDays;
+      const actualRemainingFrac = sprintItems.length ? remainingCount / sprintItems.length : 0;
+      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
+      burndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
+      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
+      burndownHtml = `${currentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${sprintItems.length} item(s) still open —
+        <span class="badge ${badgeClass}">${burndownStatusLabel}</span>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
+    }
+
     // ---- day-over-day trend ----
     let statsHistory = {};
     const rawHistory = storage.get('ado-stats-history');
@@ -606,6 +701,8 @@ async function loadDashboard() {
     const currentStats = {
       completed: completedItems.length, sprint: sprintItems.length, carryover: carryoverItems.length,
       bugs: bugItems.length, issues: issueItems.length,
+      sprintPath: currentIter ? currentIter.path : null,
+      sprintRemaining: sprintRemainingToday, sprintTotal: sprintTotalToday,
     };
     statsHistory[todayKey] = currentStats;
     const allKeys = Object.keys(statsHistory).sort();
@@ -616,26 +713,6 @@ async function loadDashboard() {
       carryover: currentStats.carryover - prior.carryover, bugs: currentStats.bugs - prior.bugs,
       issues: currentStats.issues - prior.issues,
     } : null;
-
-    // ---- sprint burndown ----
-    let burndownHtml = 'No active sprint with start/finish dates found.';
-    let burndownStatusLabel = 'unknown';
-    if (currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
-      const start = new Date(currentIter.attributes.startDate);
-      const finish = new Date(currentIter.attributes.finishDate);
-      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
-      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
-      const doneCount = sprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
-      const remainingCount = sprintItems.length - doneCount;
-      const expectedRemainingFrac = daysRemaining / totalDays;
-      const actualRemainingFrac = sprintItems.length ? remainingCount / sprintItems.length : 0;
-      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
-      burndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
-      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
-      burndownHtml = `${currentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${sprintItems.length} item(s) still open —
-        <span class="badge ${badgeClass}">${burndownStatusLabel}</span>
-        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
-    }
 
     // ---- render ----
     const statDefs = [
@@ -656,13 +733,53 @@ async function loadDashboard() {
 
     document.getElementById('sec-burndown').style.display = shown('burndown') ? 'block' : 'none';
     document.getElementById('meta-burndown').innerHTML = burndownHtml;
+    if (shown('burndown') && currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
+      const bStart = new Date(currentIter.attributes.startDate);
+      const bFinish = new Date(currentIter.attributes.finishDate);
+      const bTotalDays = Math.max(1, Math.round((bFinish - bStart) / 86400000));
+      const idealLabels = [];
+      const idealData = [];
+      for (let d = 0; d <= bTotalDays; d++) {
+        const day = new Date(bStart.getTime() + d * 86400000);
+        idealLabels.push(day.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+        idealData.push(Math.max(0, sprintTotalToday - (sprintTotalToday / bTotalDays) * d));
+      }
+      const actualData = idealLabels.map((_, i) => {
+        const dayKey = new Date(bStart.getTime() + i * 86400000).toISOString().slice(0, 10);
+        const point = statsHistory[dayKey];
+        return (point && point.sprintPath === currentIter.path) ? point.sprintRemaining : null;
+      });
+      renderLineChart('chart-burndown', idealLabels, [
+        { label: 'Ideal', data: idealData, borderColor: '#9aa1ac', borderDash: [6, 4], pointRadius: 0 },
+        { label: 'Actual', data: actualData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.1)', spanGaps: true },
+      ]);
+    }
+
+    document.getElementById('sec-completion-trend').style.display = shown('completionTrend') ? 'block' : 'none';
+    if (shown('completionTrend')) {
+      const dayLabels = [];
+      const dayCounts = {};
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const key = d.toISOString().slice(0, 10);
+        dayLabels.push(d.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+        dayCounts[key] = 0;
+      }
+      trendItems.forEach(it => {
+        const key = (field(it, 'System.ChangedDate') || '').slice(0, 10);
+        if (key in dayCounts) dayCounts[key]++;
+      });
+      renderLineChart('chart-completion-trend', dayLabels, [
+        { label: 'Completed', data: Object.values(dayCounts), borderColor: '#2e7d32', backgroundColor: 'rgba(46,125,50,0.15)', fill: true, tension: 0.3 },
+      ]);
+    }
 
     document.getElementById('sec-completed').style.display = shown('completed') ? 'block' : 'none';
     document.getElementById('meta-completed').textContent = `${completedItems.length} item(s)`;
     document.getElementById('rows-completed').innerHTML = rowsHtml(completedItems);
 
     document.getElementById('sec-reopened').style.display = shown('reopened') ? 'block' : 'none';
-    document.getElementById('meta-reopened').textContent = `${reopenedItems.length} item(s) previously in a Done/Closed state, now moved back to something else`;
+    document.getElementById('meta-reopened').textContent = `${reopenedItems.length} item(s) reopened this week, previously in a Done/Closed state`;
     document.getElementById('rows-reopened').innerHTML = rowsHtml(reopenedItems);
 
     document.getElementById('sec-blocked').style.display = shown('blocked') ? 'block' : 'none';
@@ -694,6 +811,10 @@ async function loadDashboard() {
       .sort((a, b) => b[1] - a[1])
       .map(([dev, count]) => `<tr><td>${dev}</td><td>${count}</td></tr>`)
       .join('') || '<tr><td colspan="2" class="empty">No assigned open items found</td></tr>';
+    if (shown('workload')) {
+      const sortedWorkload = Object.entries(workload).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      renderBarChart('chart-workload', sortedWorkload.map(w => w[0]), sortedWorkload.map(w => w[1]), '#3f51b5');
+    }
 
     const areaBreakdown = {};
     sprintItems.forEach(it => {
@@ -705,6 +826,10 @@ async function loadDashboard() {
       .sort((a, b) => b[1] - a[1])
       .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
       .join('') || '<tr><td colspan="2" class="empty">No current sprint items</td></tr>';
+    if (shown('area')) {
+      const sortedAreas = Object.entries(areaBreakdown).sort((a, b) => b[1] - a[1]);
+      renderPieChart('chart-area', sortedAreas.map(a => a[0]), sortedAreas.map(a => a[1]));
+    }
 
     document.getElementById('sec-bugs').style.display = shown('bugs') ? 'block' : 'none';
     document.getElementById('meta-bugs').textContent = `${bugItems.length} unresolved bug(s)`;
@@ -713,6 +838,21 @@ async function loadDashboard() {
     document.getElementById('sec-issues').style.display = shown('issues') ? 'block' : 'none';
     document.getElementById('meta-issues').textContent = `${issueItems.length} unresolved issue(s)`;
     document.getElementById('rows-issues').innerHTML = rowsHtml(issueItems);
+
+    document.getElementById('sec-backlog-age').style.display = shown('backlogAge') ? 'block' : 'none';
+    if (shown('backlogAge')) {
+      const seen = new Map();
+      [...bugItems, ...issueItems, ...carryoverItems].forEach(it => seen.set(it.id, it));
+      const buckets = { '0-2 days': 0, '3-5 days': 0, '6-10 days': 0, '10+ days': 0 };
+      seen.forEach(it => {
+        const age = daysAgo(field(it, 'System.ChangedDate')) || 0;
+        if (age <= 2) buckets['0-2 days']++;
+        else if (age <= 5) buckets['3-5 days']++;
+        else if (age <= 10) buckets['6-10 days']++;
+        else buckets['10+ days']++;
+      });
+      renderBarChart('chart-backlog-age', Object.keys(buckets), Object.values(buckets), '#b45309');
+    }
 
     const sectionPrefs = {};
     SECTION_KEYS.forEach(k => sectionPrefs[k] = shown(k));
@@ -772,7 +912,7 @@ function sendReport() {
   if (sp.reopened) body += `Reopened items: ${r.reopenedItems.length}\n`;
 
   if (sp.completed) body += `\nCOMPLETED IN LAST 24 HOURS\n${summarizeItems(r.completedItems, 15)}`;
-  if (sp.reopened) body += `\nREOPENED ITEMS (was Done, now not)\n${summarizeItems(r.reopenedItems, 15)}`;
+  if (sp.reopened) body += `\nREOPENED THIS WEEK (was Done, now not)\n${summarizeItems(r.reopenedItems, 15)}`;
   if (sp.blocked) body += `\nBLOCKED ITEMS\n${summarizeItems(r.blockedItems, 15)}`;
   if (sp.carryover) body += `\nCARRIED OVER FROM PREVIOUS SPRINT\n${summarizeItems(r.carryoverItems, 15)}`;
   if (sp.workload) {
