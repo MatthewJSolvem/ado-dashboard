@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ADO Morning Dashboard</title>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .config .field { display: flex; flex-direction: column; gap: 4px; }
+  .config label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .config input, .config select { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+                  color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  .config input:focus, .config select:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .config .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .config .full { grid-column: 1 / -1; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 8px 10px; font-size: 12px; flex: 1; }
+  button.danger { background: var(--bad); }
+  button.danger:hover { background: #a01f1f; }
+  .checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  #error a { color: #7a1f1f; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .delta { font-size: 11px; margin-top: 4px; font-weight: 600; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 20px; display: none; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .section-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
+  .section-toggles label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text);
+                            text-transform: none; font-weight: 400; }
+</style>
+</head>
+<body>
+
+  <h1>ADO Morning Dashboard</h1>
+  <div class="subtitle">Runs entirely in your browser — nothing installed. Works the same whether opened locally or hosted (e.g. on GitHub Pages). Rows sitting more than 5 days in their current state are highlighted.</div>
+
+  <div class="config">
+    <div class="field"><label>Saved Profile</label>
+      <select id="profileSelect" onchange="applyProfile(this.value)"><option value="">-- New / unsaved --</option></select>
+    </div>
+    <div class="field"><label>Profile Name</label><input id="profileName" placeholder="e.g. CES Project"></div>
+    <div class="field"><label>Profile Actions</label>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="small" onclick="saveProfile()">Save</button>
+        <button type="button" class="small danger" onclick="deleteProfile()">Delete</button>
+      </div>
+    </div>
+
+    <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
+    <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
+    <div class="field"><label>Team</label><input id="team" placeholder="your-project-name Team"></div>
+    <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
+    <div class="field"><label>Send report to (optional)</label><input id="recipient" placeholder="you@company.com"></div>
+
+    <div class="field full">
+      <label>Report Sections — choose what to include before generating</label>
+      <div class="section-toggles">
+        <label><input type="checkbox" id="show-burndown" checked onchange="saveSectionPrefs()"> Sprint burndown status</label>
+        <label><input type="checkbox" id="show-completed" checked onchange="saveSectionPrefs()"> Completed (24h)</label>
+        <label><input type="checkbox" id="show-reopened" checked onchange="saveSectionPrefs()"> Reopened items</label>
+        <label><input type="checkbox" id="show-blocked" checked onchange="saveSectionPrefs()"> Blocked items</label>
+        <label><input type="checkbox" id="show-sprint" checked onchange="saveSectionPrefs()"> Current sprint</label>
+        <label><input type="checkbox" id="show-carryover" checked onchange="saveSectionPrefs()"> Carried over</label>
+        <label><input type="checkbox" id="show-weekly" checked onchange="saveSectionPrefs()"> Completed this week</label>
+        <label><input type="checkbox" id="show-workload" checked onchange="saveSectionPrefs()"> Workload by developer</label>
+        <label><input type="checkbox" id="show-area" checked onchange="saveSectionPrefs()"> Sprint by area path</label>
+        <label><input type="checkbox" id="show-bugs" checked onchange="saveSectionPrefs()"> Bug backlog</label>
+        <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="loadBtn" onclick="loadDashboard()">Load Dashboard</button>
+      <button id="sendBtn" onclick="sendReport()" disabled>Send Report</button>
+      <label class="checkbox"><input type="checkbox" id="remember"> Remember org/project/team/recipient on this device (not the token)</label>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="error"></div>
+
+  <div id="stats" class="grid" style="display:none"></div>
+
+  <section id="sec-burndown">
+    <h2>Sprint burndown status</h2>
+    <div class="meta" id="meta-burndown"></div>
+  </section>
+
+  <section id="sec-completed">
+    <h2>Completed in the last 24 hours</h2>
+    <div class="meta" id="meta-completed"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-completed"></tbody></table></div>
+  </section>
+
+  <section id="sec-reopened">
+    <h2>Reopened items (previously Done, now not)</h2>
+    <div class="meta" id="meta-reopened"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-reopened"></tbody></table></div>
+  </section>
+
+  <section id="sec-blocked">
+    <h2>Blocked items</h2>
+    <div class="meta" id="meta-blocked"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-blocked"></tbody></table></div>
+  </section>
+
+  <section id="sec-sprint">
+    <h2 id="title-sprint">Current sprint</h2>
+    <div class="meta" id="meta-sprint"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-sprint"></tbody></table></div>
+  </section>
+
+  <section id="sec-carryover">
+    <h2 id="title-carryover">Carried over from previous sprint</h2>
+    <div class="meta" id="meta-carryover"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-carryover"></tbody></table></div>
+  </section>
+
+  <section id="sec-weekly">
+    <h2>Completed this week</h2>
+    <div class="meta" id="meta-weekly"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-weekly"></tbody></table></div>
+  </section>
+
+  <section id="sec-workload">
+    <h2>Workload by developer</h2>
+    <div class="meta" id="meta-workload"></div>
+    <table><thead><tr><th>Developer</th><th>Items assigned</th></tr></thead>
+    <tbody id="rows-workload"></tbody></table>
+  </section>
+
+  <section id="sec-area">
+    <h2>Current sprint by area path</h2>
+    <div class="meta">Where this sprint's work is concentrated</div>
+    <table><thead><tr><th>Area Path</th><th>Items</th></tr></thead>
+    <tbody id="rows-area"></tbody></table>
+  </section>
+
+  <section id="sec-bugs">
+    <h2>Outstanding bug backlog</h2>
+    <div class="meta" id="meta-bugs"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-bugs"></tbody></table></div>
+  </section>
+
+  <section id="sec-issues">
+    <h2>Outstanding issues</h2>
+    <div class="meta" id="meta-issues"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-issues"></tbody></table></div>
+  </section>
+
+<script>
+let lastReport = null; // populated after a successful load, used by sendReport()
+const AGING_THRESHOLD_DAYS = 5;
+const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','workload','area','bugs','issues'];
+
+// ---- tiny storage wrapper: plain localStorage, so this works the same
+// whether opened as a local file or hosted somewhere like GitHub Pages ----
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (!raw) return;
+  try {
+    const cfg = JSON.parse(raw);
+    document.getElementById('org').value = cfg.org || '';
+    document.getElementById('project').value = cfg.project || '';
+    document.getElementById('team').value = cfg.team || '';
+    document.getElementById('recipient').value = cfg.recipient || '';
+    document.getElementById('remember').checked = true;
+  } catch (e) {}
+}
+
+let profiles = {};
+function loadProfiles() {
+  const raw = storage.get('ado-profiles');
+  try { profiles = raw ? JSON.parse(raw) : {}; } catch (e) { profiles = {}; }
+  renderProfileOptions();
+}
+function renderProfileOptions() {
+  const sel = document.getElementById('profileSelect');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- New / unsaved --</option>' +
+    Object.keys(profiles).sort().map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.value = profiles[current] ? current : '';
+}
+function applyProfile(name) {
+  if (!name || !profiles[name]) { return; }
+  const p = profiles[name];
+  document.getElementById('org').value = p.org || '';
+  document.getElementById('project').value = p.project || '';
+  document.getElementById('team').value = p.team || '';
+  document.getElementById('recipient').value = p.recipient || '';
+  document.getElementById('profileName').value = name;
+}
+function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  if (!name) { showError('Give this profile a name first, then click Save.'); return; }
+  profiles[name] = {
+    org: document.getElementById('org').value.trim(),
+    project: document.getElementById('project').value.trim(),
+    team: document.getElementById('team').value.trim(),
+    recipient: document.getElementById('recipient').value.trim(),
+  };
+  storage.set('ado-profiles', JSON.stringify(profiles));
+  renderProfileOptions();
+  document.getElementById('profileSelect').value = name;
+  setStatus(`Saved profile "${name}".`);
+}
+function deleteProfile() {
+  const sel = document.getElementById('profileSelect');
+  const name = sel.value;
+  if (!name) return;
+  delete profiles[name];
+  storage.set('ado-profiles', JSON.stringify(profiles));
+  renderProfileOptions();
+  document.getElementById('profileName').value = '';
+  setStatus(`Deleted profile "${name}".`);
+}
+
+function restoreSectionPrefs() {
+  const raw = storage.get('ado-section-prefs');
+  if (!raw) return;
+  try {
+    const prefs = JSON.parse(raw);
+    SECTION_KEYS.forEach(k => { const el = document.getElementById('show-' + k); if (el && k in prefs) el.checked = prefs[k]; });
+  } catch (e) {}
+}
+function saveSectionPrefs() {
+  const prefs = {};
+  SECTION_KEYS.forEach(k => { const el = document.getElementById('show-' + k); if (el) prefs[k] = el.checked; });
+  storage.set('ado-section-prefs', JSON.stringify(prefs));
+}
+function shown(key) {
+  const el = document.getElementById('show-' + key);
+  return el ? el.checked : true;
+}
+
+restoreConfig();
+loadProfiles();
+restoreSectionPrefs();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function showError(html) {
+  const el = document.getElementById('error');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try {
+    const j = await res.json();
+    return j.message || JSON.stringify(j);
+  } catch (e) {
+    try { return await res.text(); } catch (e2) { return ''; }
+  }
+}
+
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+  } catch (err) {
+    throw new Error('CORS_OR_NETWORK');
+  }
+  if (!res.ok) {
+    const detail = await readAdoErrorDetail(res);
+    const e = new Error(`HTTP_${res.status}`);
+    e.detail = detail;
+    e.url = url;
+    throw e;
+  }
+  return res.json();
+}
+
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error('CORS_OR_NETWORK');
+  }
+  if (!res.ok) {
+    const detail = await readAdoErrorDetail(res);
+    const e = new Error(`HTTP_${res.status}`);
+    e.detail = detail;
+    e.url = url;
+    throw e;
+  }
+  return res.json();
+}
+
+async function wiql(projectBase, queryText, label) {
+  try {
+    return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText });
+  } catch (err) {
+    if (err.message && err.message.startsWith('HTTP_')) {
+      err.wiqlLabel = label;
+      err.wiqlQuery = queryText;
+    }
+    throw err;
+  }
+}
+
+function field(item, name, def = '') {
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') {
+    return val.displayName || val.uniqueName || val.name || def;
+  }
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+
+function isBlocked(item) {
+  return field(item, 'System.Tags', '').toLowerCase().includes('blocked');
+}
+
+function isCompletedState(item, typeStateMap) {
+  const t = field(item, 'System.WorkItemType');
+  const s = field(item, 'System.State');
+  return (typeStateMap[t] || {})[s] === 'Completed';
+}
+
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+
+function buildStateClause(typeStateMap, category, negate) {
+  const groups = [];
+  for (const [wit, states] of Object.entries(typeStateMap)) {
+    const matching = Object.entries(states).filter(([, cat]) => cat === category).map(([s]) => s);
+    if (matching.length) {
+      const list = matching.map(s => `'${s}'`).join(',');
+      groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] IN (${list}))`);
+    }
+  }
+  if (!groups.length) return negate ? '(1=1)' : '(1=0)';
+  const clause = groups.join(' OR ');
+  return negate ? `NOT (${clause})` : `(${clause})`;
+}
+
+// Raw WIQL uses the single keyword EVER (the "Was Ever" label only shows up
+// in the visual Query Editor UI, not the query language itself).
+function buildEverCompletedClause(typeStateMap) {
+  const groups = [];
+  for (const [wit, states] of Object.entries(typeStateMap)) {
+    Object.entries(states).filter(([, c]) => c === 'Completed').forEach(([s]) => {
+      groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] EVER '${s}')`);
+    });
+  }
+  if (!groups.length) return '(1=0)';
+  return `(${groups.join(' OR ')})`;
+}
+
+function rowsHtml(items) {
+  if (!items.length) return `<tr><td colspan="9" class="empty">Nothing here</td></tr>`;
+  return items
+    .slice()
+    .sort((a, b) => (field(b, 'System.ChangedDate') > field(a, 'System.ChangedDate') ? 1 : -1))
+    .map(it => {
+      const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+      const age = daysAgo(field(it, 'System.ChangedDate'));
+      const ageCell = age === null ? '' : `<span style="${age > AGING_THRESHOLD_DAYS ? 'color:var(--bad);font-weight:700' : ''}">${age}</span>`;
+      const blockedCell = isBlocked(it) ? `<span class="badge badge-bad">Blocked</span>` : '';
+      const area = field(it, 'System.AreaPath', '');
+      return `<tr><td>#${it.id}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
+        <td><span class="badge">${field(it, 'System.State')}</span></td><td>${area}</td><td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+        <td>${ageCell}</td><td>${blockedCell}</td><td>${changed}</td></tr>`;
+    }).join('');
+}
+
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+
+function fmtDelta(delta, goodWhenUp) {
+  if (delta === null || delta === undefined) return '';
+  if (delta === 0) return `<div class="delta" style="color:var(--muted)">no change vs prior run</div>`;
+  const up = delta > 0;
+  let color = 'var(--muted)';
+  if (goodWhenUp !== null) {
+    const good = goodWhenUp ? up : !up;
+    color = good ? 'var(--good)' : 'var(--bad)';
+  }
+  return `<div class="delta" style="color:${color}">${up ? '+' : ''}${delta} vs prior run</div>`;
+}
+
+function summarizeItems(items, limit) {
+  if (!items.length) return '  (none)\n';
+  const shown = items.slice(0, limit);
+  let out = shown.map(it =>
+    `  #${it.id} ${field(it, 'System.Title')} [${field(it, 'System.State')}] - ${field(it, 'System.AssignedTo', 'Unassigned')}`
+  ).join('\n') + '\n';
+  if (items.length > limit) out += `  ...and ${items.length - limit} more (see the dashboard for the full list)\n`;
+  return out;
+}
+
+async function loadDashboard() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const team = document.getElementById('team').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const recipient = document.getElementById('recipient').value.trim();
+  const remember = document.getElementById('remember').checked;
+
+  if (!org || !project || !team || !pat) {
+    showError('Fill in organization, project, team, and PAT first.');
+    return;
+  }
+
+  if (remember) {
+    storage.set('ado-config', JSON.stringify({ org, project, team, recipient }));
+  }
+  saveSectionPrefs();
+
+  const btn = document.getElementById('loadBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  sendBtn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const teamBase = `${base}/${project}/${team}`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+
+    const completedClause = buildStateClause(typeStateMap, 'Completed', false);
+    const removedOrCompleted = `(${buildStateClause(typeStateMap, 'Completed', false)} OR ${buildStateClause(typeStateMap, 'Removed', false)})`;
+    const everCompletedClause = buildEverCompletedClause(typeStateMap);
+
+    setStatus('Finding sprints...');
+    const currentIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
+    const currentIter = currentIterData.value[0] || null;
+    const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
+    let previousIter = null;
+    if (currentIter) {
+      const currentStart = currentIter.attributes && currentIter.attributes.startDate;
+      const past = allIterData.value.filter(it =>
+        it.attributes && it.attributes.finishDate && currentStart && it.attributes.finishDate < currentStart
+      );
+      if (past.length) previousIter = past.sort((a, b) => a.attributes.finishDate.localeCompare(b.attributes.finishDate)).pop();
+    }
+
+    const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State',
+                    'System.AssignedTo', 'System.ChangedDate', 'System.IterationPath',
+                    'System.AreaPath', 'System.Tags'];
+
+    setStatus('Fetching completed items...');
+    const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= @Today - 1
+              AND ${completedClause}
+              ORDER BY [System.ChangedDate] DESC`, 'Completed in last 24 hours');
+    const completedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Checking for reopened items...');
+    const reopenedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${everCompletedClause}
+              AND NOT ${removedOrCompleted}
+              ORDER BY [System.ChangedDate] DESC`, 'Reopened items');
+    const reopenedItems = await getItems(base, reopenedWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Checking for blocked items...');
+    const blockedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.Tags] CONTAINS 'Blocked'
+              AND NOT ${removedOrCompleted}`, 'Blocked items');
+    const blockedItems = await getItems(base, blockedWiql.workItems.map(w => w.id), fields);
+
+    let sprintItems = [];
+    if (currentIter) {
+      setStatus('Fetching current sprint items...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${currentIter.path}'`, 'Current sprint items');
+      sprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    let carryoverItems = [];
+    if (previousIter) {
+      setStatus('Fetching previous sprint carry-over...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${previousIter.path}'
+                AND NOT ${removedOrCompleted}`, 'Previous sprint carry-over');
+      carryoverItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    setStatus('Fetching this week\'s completions...');
+    const now = new Date();
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
+    const weeklyWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= ${weekStartClause}
+              AND ${completedClause}
+              ORDER BY [System.ChangedDate] DESC`, 'Completed this week');
+    const weeklyItems = await getItems(base, weeklyWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Searching assigned resources...');
+    const workloadWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+              AND [System.AssignedTo] <> '' AND NOT ${removedOrCompleted}`, 'Workload by developer');
+    const workloadItems = await getItems(base, workloadWiql.workItems.map(w => w.id), fields);
+
+    async function fetchOpenBacklog(workItemType) {
+      const states = typeStateMap[workItemType] || {};
+      const openStates = Object.entries(states).filter(([, c]) => c !== 'Completed' && c !== 'Removed').map(([s]) => s);
+      if (!openStates.length) return [];
+      const stateList = openStates.map(s => `'${s}'`).join(',');
+      const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+                AND [System.WorkItemType] = '${workItemType}' AND [System.State] IN (${stateList})`, `${workItemType} backlog`);
+      return getItems(base, result.workItems.map(w => w.id), fields);
+    }
+
+    setStatus('Fetching bug backlog...');
+    const bugItems = await fetchOpenBacklog('Bug');
+
+    setStatus('Fetching outstanding issues...');
+    const issueItems = await fetchOpenBacklog('Issue');
+
+    // ---- day-over-day trend ----
+    let statsHistory = {};
+    const rawHistory = storage.get('ado-stats-history');
+    if (rawHistory) { try { statsHistory = JSON.parse(rawHistory); } catch (e) {} }
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const priorKeys = Object.keys(statsHistory).filter(k => k !== todayKey).sort();
+    const prior = priorKeys.length ? statsHistory[priorKeys[priorKeys.length - 1]] : null;
+    const currentStats = {
+      completed: completedItems.length, sprint: sprintItems.length, carryover: carryoverItems.length,
+      bugs: bugItems.length, issues: issueItems.length,
+    };
+    statsHistory[todayKey] = currentStats;
+    const allKeys = Object.keys(statsHistory).sort();
+    if (allKeys.length > 30) allKeys.slice(0, allKeys.length - 30).forEach(k => delete statsHistory[k]);
+    storage.set('ado-stats-history', JSON.stringify(statsHistory));
+    const deltas = prior ? {
+      completed: currentStats.completed - prior.completed, sprint: currentStats.sprint - prior.sprint,
+      carryover: currentStats.carryover - prior.carryover, bugs: currentStats.bugs - prior.bugs,
+      issues: currentStats.issues - prior.issues,
+    } : null;
+
+    // ---- sprint burndown ----
+    let burndownHtml = 'No active sprint with start/finish dates found.';
+    let burndownStatusLabel = 'unknown';
+    if (currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
+      const start = new Date(currentIter.attributes.startDate);
+      const finish = new Date(currentIter.attributes.finishDate);
+      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
+      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
+      const doneCount = sprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
+      const remainingCount = sprintItems.length - doneCount;
+      const expectedRemainingFrac = daysRemaining / totalDays;
+      const actualRemainingFrac = sprintItems.length ? remainingCount / sprintItems.length : 0;
+      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
+      burndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
+      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
+      burndownHtml = `${currentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${sprintItems.length} item(s) still open —
+        <span class="badge ${badgeClass}">${burndownStatusLabel}</span>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
+    }
+
+    // ---- render ----
+    const statDefs = [
+      { key: 'completed', color: 'var(--good)', value: completedItems.length, label: 'Completed (24h)', delta: fmtDelta(deltas ? deltas.completed : null, true) },
+      { key: 'sprint', color: 'var(--accent)', value: sprintItems.length, label: 'In current sprint', delta: fmtDelta(deltas ? deltas.sprint : null, null) },
+      { key: 'carryover', color: 'var(--warn)', value: carryoverItems.length, label: 'Carried over', delta: fmtDelta(deltas ? deltas.carryover : null, false) },
+      { key: 'bugs', color: 'var(--warn)', value: bugItems.length, label: 'Open bugs', delta: fmtDelta(deltas ? deltas.bugs : null, false) },
+      { key: 'issues', color: 'var(--warn)', value: issueItems.length, label: 'Open issues', delta: fmtDelta(deltas ? deltas.issues : null, false) },
+      { key: 'blocked', color: 'var(--bad)', value: blockedItems.length, label: 'Blocked items', delta: '' },
+      { key: 'reopened', color: 'var(--bad)', value: reopenedItems.length, label: 'Reopened items', delta: '' },
+      { key: 'weekly', color: 'var(--good)', value: weeklyItems.length, label: 'Completed this week', delta: '' },
+    ];
+    const visibleStats = statDefs.filter(s => shown(s.key));
+    document.getElementById('stats').style.display = visibleStats.length ? 'grid' : 'none';
+    document.getElementById('stats').innerHTML = visibleStats
+      .map(s => `<div class="stat"><div class="num" style="color:${s.color}">${s.value}</div><div class="label">${s.label}</div>${s.delta}</div>`)
+      .join('');
+
+    document.getElementById('sec-burndown').style.display = shown('burndown') ? 'block' : 'none';
+    document.getElementById('meta-burndown').innerHTML = burndownHtml;
+
+    document.getElementById('sec-completed').style.display = shown('completed') ? 'block' : 'none';
+    document.getElementById('meta-completed').textContent = `${completedItems.length} item(s)`;
+    document.getElementById('rows-completed').innerHTML = rowsHtml(completedItems);
+
+    document.getElementById('sec-reopened').style.display = shown('reopened') ? 'block' : 'none';
+    document.getElementById('meta-reopened').textContent = `${reopenedItems.length} item(s) previously in a Done/Closed state, now moved back to something else`;
+    document.getElementById('rows-reopened').innerHTML = rowsHtml(reopenedItems);
+
+    document.getElementById('sec-blocked').style.display = shown('blocked') ? 'block' : 'none';
+    document.getElementById('meta-blocked').textContent = `${blockedItems.length} item(s) tagged "Blocked"`;
+    document.getElementById('rows-blocked').innerHTML = rowsHtml(blockedItems);
+
+    document.getElementById('sec-sprint').style.display = shown('sprint') ? 'block' : 'none';
+    document.getElementById('title-sprint').textContent = `Current sprint — ${currentIter ? currentIter.name : 'none found'}`;
+    document.getElementById('meta-sprint').textContent = `${sprintItems.length} item(s)`;
+    document.getElementById('rows-sprint').innerHTML = rowsHtml(sprintItems);
+
+    document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
+    document.getElementById('title-carryover').textContent = `Carried over — ${previousIter ? previousIter.name : 'no previous sprint found'}`;
+    document.getElementById('meta-carryover').textContent = `${carryoverItems.length} item(s) not yet completed`;
+    document.getElementById('rows-carryover').innerHTML = rowsHtml(carryoverItems);
+
+    document.getElementById('sec-weekly').style.display = shown('weekly') ? 'block' : 'none';
+    document.getElementById('meta-weekly').textContent = `${weeklyItems.length} item(s) completed since Monday`;
+    document.getElementById('rows-weekly').innerHTML = rowsHtml(weeklyItems);
+
+    const workload = {};
+    workloadItems.forEach(it => {
+      const a = field(it, 'System.AssignedTo', 'Unassigned');
+      workload[a] = (workload[a] || 0) + 1;
+    });
+    document.getElementById('sec-workload').style.display = shown('workload') ? 'block' : 'none';
+    document.getElementById('meta-workload').textContent = `${workloadItems.length} open item(s) across the project, grouped by assignee`;
+    document.getElementById('rows-workload').innerHTML = Object.entries(workload)
+      .sort((a, b) => b[1] - a[1])
+      .map(([dev, count]) => `<tr><td>${dev}</td><td>${count}</td></tr>`)
+      .join('') || '<tr><td colspan="2" class="empty">No assigned open items found</td></tr>';
+
+    const areaBreakdown = {};
+    sprintItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      areaBreakdown[a] = (areaBreakdown[a] || 0) + 1;
+    });
+    document.getElementById('sec-area').style.display = shown('area') ? 'block' : 'none';
+    document.getElementById('rows-area').innerHTML = Object.entries(areaBreakdown)
+      .sort((a, b) => b[1] - a[1])
+      .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
+      .join('') || '<tr><td colspan="2" class="empty">No current sprint items</td></tr>';
+
+    document.getElementById('sec-bugs').style.display = shown('bugs') ? 'block' : 'none';
+    document.getElementById('meta-bugs').textContent = `${bugItems.length} unresolved bug(s)`;
+    document.getElementById('rows-bugs').innerHTML = rowsHtml(bugItems);
+
+    document.getElementById('sec-issues').style.display = shown('issues') ? 'block' : 'none';
+    document.getElementById('meta-issues').textContent = `${issueItems.length} unresolved issue(s)`;
+    document.getElementById('rows-issues').innerHTML = rowsHtml(issueItems);
+
+    const sectionPrefs = {};
+    SECTION_KEYS.forEach(k => sectionPrefs[k] = shown(k));
+
+    lastReport = {
+      recipient, completedItems, sprintItems, carryoverItems, workload, bugItems, issueItems,
+      reopenedItems, blockedItems, weeklyItems, burndownStatusLabel, sectionPrefs,
+      currentIterName: currentIter ? currentIter.name : 'none found',
+      previousIterName: previousIter ? previousIter.name : 'no previous sprint found',
+    };
+    sendBtn.disabled = false;
+
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError(`
+        <strong>Blocked before it could reach Azure DevOps.</strong><br>
+        This is almost always a CORS block — Azure DevOps's REST API doesn't send the
+        headers browsers need to allow direct JavaScript calls from a page like this one,
+        regardless of your PAT being correct. It's a server-side restriction on Microsoft's
+        end, not something fixable from this page.<br><br>
+        Open your browser's DevTools (F12) → Console/Network tab and re-click "Load Dashboard" —
+        if you see the word "CORS" in a red error there, that confirms it.
+      `);
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — double check the PAT has "Work Items (Read)" scope and hasn\'t expired.');
+    } else if (err.message === 'HTTP_404') {
+      showError('Got a 404 — double check the organization, project, and team names are spelled exactly as they appear in Azure DevOps (team name is usually "&lt;Project&gt; Team").');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const step = err.wiqlLabel ? `<strong>Step:</strong> ${err.wiqlLabel}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      const query = err.wiqlQuery ? `<pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--border);padding:8px;margin-top:8px;font-size:11px;border-radius:2px">${err.wiqlQuery.replace(/</g,'&lt;')}</pre>` : '';
+      showError(`<strong>${err.message.replace('HTTP_','HTTP ')} — something in this request was rejected.</strong><br>${step}${detail}${query}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function sendReport() {
+  if (!lastReport) return;
+  const r = lastReport;
+  const sp = r.sectionPrefs || {};
+  const today = new Date().toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  let body = `ADO MORNING REPORT - ${today}\n\nSUMMARY\n`;
+  if (sp.completed) body += `Completed (24h): ${r.completedItems.length}\n`;
+  if (sp.sprint) body += `Current sprint (${r.currentIterName}): ${r.sprintItems.length} item(s) - ${r.burndownStatusLabel}\n`;
+  if (sp.carryover) body += `Carried over from previous sprint (${r.previousIterName}): ${r.carryoverItems.length} item(s)\n`;
+  if (sp.weekly) body += `Completed this week: ${r.weeklyItems.length}\n`;
+  if (sp.bugs) body += `Open bugs: ${r.bugItems.length}\n`;
+  if (sp.issues) body += `Open issues: ${r.issueItems.length}\n`;
+  if (sp.blocked) body += `Blocked items: ${r.blockedItems.length}\n`;
+  if (sp.reopened) body += `Reopened items: ${r.reopenedItems.length}\n`;
+
+  if (sp.completed) body += `\nCOMPLETED IN LAST 24 HOURS\n${summarizeItems(r.completedItems, 15)}`;
+  if (sp.reopened) body += `\nREOPENED ITEMS (was Done, now not)\n${summarizeItems(r.reopenedItems, 15)}`;
+  if (sp.blocked) body += `\nBLOCKED ITEMS\n${summarizeItems(r.blockedItems, 15)}`;
+  if (sp.carryover) body += `\nCARRIED OVER FROM PREVIOUS SPRINT\n${summarizeItems(r.carryoverItems, 15)}`;
+  if (sp.workload) {
+    const workloadLines = Object.entries(r.workload).sort((a, b) => b[1] - a[1])
+      .map(([dev, count]) => `  ${dev}: ${count}`).join('\n') || '  (none)';
+    body += `\nWORKLOAD BY DEVELOPER\n${workloadLines}\n`;
+  }
+  if (sp.bugs) body += `\nOPEN BUG BACKLOG\n${summarizeItems(r.bugItems, 15)}`;
+  if (sp.issues) body += `\nOPEN ISSUES\n${summarizeItems(r.issueItems, 15)}`;
+  body += `\nGenerated from the ADO Morning Dashboard.`;
+
+  const subject = `ADO Morning Report - ${new Date().toISOString().slice(0, 10)}`;
+  const to = r.recipient || '';
+  const mailto = `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  window.location.href = mailto;
+}
+</script>
+</body>
+</html>
