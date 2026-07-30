@@ -216,6 +216,7 @@
 
 <script>
 let lastReport = null; // populated after a successful load, used by sendReport()
+let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
 const AGING_THRESHOLD_DAYS = 5;
 const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','workload','area','bugs','issues','completionTrend','backlogAge'];
 
@@ -441,7 +442,10 @@ function rowsHtml(items) {
       const ageCell = age === null ? '' : `<span style="${age > AGING_THRESHOLD_DAYS ? 'color:var(--bad);font-weight:700' : ''}">${age}</span>`;
       const blockedCell = isBlocked(it) ? `<span class="badge badge-bad">Blocked</span>` : '';
       const area = field(it, 'System.AreaPath', '');
-      return `<tr><td>#${it.id}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
+      const idCell = workItemBaseUrl
+        ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+        : `#${it.id}`;
+      return `<tr><td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
         <td><span class="badge">${field(it, 'System.State')}</span></td><td>${area}</td><td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
         <td>${ageCell}</td><td>${blockedCell}</td><td>${changed}</td></tr>`;
     }).join('');
@@ -551,6 +555,7 @@ async function loadDashboard() {
   const base = `https://dev.azure.com/${org}`;
   const projectBase = `${base}/${project}`;
   const teamBase = `${base}/${project}/${team}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
 
   try {
     setStatus('Reading work item states...');
