@@ -102,8 +102,9 @@
         <label><input type="checkbox" id="show-sprint" checked onchange="saveSectionPrefs()"> Current sprint</label>
         <label><input type="checkbox" id="show-carryover" checked onchange="saveSectionPrefs()"> Carried over</label>
         <label><input type="checkbox" id="show-weekly" checked onchange="saveSectionPrefs()"> Completed this week</label>
+        <label><input type="checkbox" id="show-teamPerformance" checked onchange="saveSectionPrefs()"> Weekly team performance</label>
         <label><input type="checkbox" id="show-workload" checked onchange="saveSectionPrefs()"> Workload by developer</label>
-        <label><input type="checkbox" id="show-area" checked onchange="saveSectionPrefs()"> Sprint by area path</label>
+        <label><input type="checkbox" id="show-area" checked onchange="saveSectionPrefs()"> Open work by area path</label>
         <label><input type="checkbox" id="show-bugs" checked onchange="saveSectionPrefs()"> Bug backlog</label>
         <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
         <label><input type="checkbox" id="show-completionTrend" checked onchange="saveSectionPrefs()"> Completion trend chart</label>
@@ -174,8 +175,30 @@
   <section id="sec-weekly">
     <h2>Completed this week</h2>
     <div class="meta" id="meta-weekly"></div>
+    <div style="height:200px;margin-bottom:16px"><canvas id="chart-weekly-area"></canvas></div>
+    <table style="margin-bottom:20px"><thead><tr><th>Area Path</th><th>Completed this week</th></tr></thead>
+    <tbody id="rows-weekly-area"></tbody></table>
     <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
     <tbody id="rows-weekly"></tbody></table></div>
+  </section>
+
+  <section id="sec-team-performance">
+    <h2>Weekly Team Performance</h2>
+    <div class="meta">
+      Area path:
+      <select id="perfAreaSelect" onchange="renderTeamPerformance()" style="margin-left:6px;padding:6px 8px;border:1px solid var(--border);border-radius:2px;background:#fafafa;font-size:13px">
+        <option value="">All areas</option>
+      </select>
+    </div>
+    <div id="perf-stats" class="grid" style="margin:16px 0"></div>
+    <div style="height:220px"><canvas id="chart-perf-trend"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px" id="perf-status"></div>
+
+    <h2 style="margin-top:24px">Defect Leakage — this week</h2>
+    <div class="meta" id="meta-leakage"></div>
+    <div id="leakage-env-stats" class="grid" style="margin-bottom:16px"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Client</th><th>Developer</th><th>Environment</th><th>Testing Status</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-leakage"></tbody></table></div>
   </section>
 
   <section id="sec-workload">
@@ -187,8 +210,8 @@
   </section>
 
   <section id="sec-area">
-    <h2>Current sprint by area path</h2>
-    <div class="meta">Where this sprint's work is concentrated</div>
+    <h2>Open work by area path (full project)</h2>
+    <div class="meta" id="meta-area">Where all open work across the project is concentrated</div>
     <div style="height:240px;max-width:400px;margin:0 auto 16px"><canvas id="chart-area"></canvas></div>
     <table><thead><tr><th>Area Path</th><th>Items</th></tr></thead>
     <tbody id="rows-area"></tbody></table>
@@ -218,7 +241,7 @@
 let lastReport = null; // populated after a successful load, used by sendReport()
 let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
 const AGING_THRESHOLD_DAYS = 5;
-const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','workload','area','bugs','issues','completionTrend','backlogAge'];
+const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge'];
 
 // ---- tiny storage wrapper: plain localStorage, so this works the same
 // whether opened as a local file or hosted somewhere like GitHub Pages ----
@@ -527,6 +550,161 @@ function summarizeItems(items, limit) {
   return out;
 }
 
+// ---- Weekly Team Performance (filtered by area path dropdown) ----
+let perfData = null; // set once per successful load; used by renderTeamPerformance()
+
+function itemsInArea(items, areaPath) {
+  if (!areaPath) return items;
+  return items.filter(it => {
+    const a = field(it, 'System.AreaPath', '');
+    return a === areaPath || a.startsWith(areaPath + '\\');
+  });
+}
+
+function populatePerfAreaOptions(areaPaths) {
+  const sel = document.getElementById('perfAreaSelect');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All areas</option>' +
+    areaPaths.sort().map(a => `<option value="${a.replace(/"/g, '&quot;')}">${a}</option>`).join('');
+  if (areaPaths.includes(current)) sel.value = current;
+}
+
+// Cross-checks each item's actual revision history so "reopened" means a real
+// Completed -> active -> Completed cycle, not a guess based on current state.
+async function computeReopenRate(items, base, typeStateMap) {
+  if (!items.length) return { rate: null, reopenedCount: 0, total: 0, failed: 0 };
+  let reopenedCount = 0;
+  let failed = 0;
+  await Promise.all(items.map(async (it) => {
+    const witType = field(it, 'System.WorkItemType');
+    try {
+      const data = await adoGet(`${base}/_apis/wit/workitems/${it.id}/updates?api-version=7.1`);
+      let completedTransitions = 0;
+      (data.value || []).forEach(rev => {
+        const sc = rev.fields && rev.fields['System.State'];
+        if (sc && sc.newValue) {
+          const cat = (typeStateMap[witType] || {})[sc.newValue];
+          if (cat === 'Completed') completedTransitions++;
+        }
+      });
+      if (completedTransitions >= 2) reopenedCount++;
+    } catch (e) {
+      failed++;
+    }
+  }));
+  return { rate: (reopenedCount / items.length) * 100, reopenedCount, total: items.length, failed };
+}
+
+async function renderTeamPerformance() {
+  if (!perfData) return;
+  const areaPath = document.getElementById('perfAreaSelect').value;
+  const { fourWeekItems, weeklyItems, base, typeStateMap, leakageItems, leakageFieldsFound, leakageStatusNote } = perfData;
+  const filteredWeekly = itemsInArea(weeklyItems, areaPath);
+  const filteredFourWeek = itemsInArea(fourWeekItems, areaPath);
+
+  const cycleTimes = filteredWeekly
+    .map(it => {
+      const created = field(it, 'System.CreatedDate');
+      const changed = field(it, 'System.ChangedDate');
+      if (!created || !changed) return null;
+      return (new Date(changed) - new Date(created)) / 86400000;
+    })
+    .filter(v => v !== null && v >= 0);
+  const avgCycleTime = cycleTimes.length ? (cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length) : null;
+
+  const statsHtml = `
+    <div class="stat"><div class="num" style="color:var(--good)">${filteredWeekly.length}</div><div class="label">Completed this week</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent)">${avgCycleTime !== null ? avgCycleTime.toFixed(1) : '—'}</div><div class="label">Avg cycle time (days)</div></div>
+    <div class="stat" id="perf-reopen-stat"><div class="num" style="color:var(--muted)">…</div><div class="label">Reopen rate</div></div>
+  `;
+  document.getElementById('perf-stats').innerHTML = statsHtml;
+
+  // 4-week trend, bucketed Monday-to-Sunday, oldest to newest
+  const now2 = new Date();
+  const dsm2 = (now2.getDay() + 6) % 7;
+  const thisWeekStart = new Date(now2.getTime() - dsm2 * 86400000);
+  const counts = [0, 0, 0, 0]; // 0 = this week, 3 = three weeks ago
+  filteredFourWeek.forEach(it => {
+    const changed = new Date(field(it, 'System.ChangedDate'));
+    const weeksAgo = Math.max(0, Math.min(3, Math.floor((thisWeekStart - changed) / (7 * 86400000))));
+    counts[weeksAgo]++;
+  });
+  renderLineChart('chart-perf-trend', ['3 weeks ago', '2 weeks ago', 'Last week', 'This week'], [
+    { label: 'Completed', data: [counts[3], counts[2], counts[1], counts[0]], borderColor: '#3f51b5', backgroundColor: 'rgba(63,81,181,0.15)', fill: true, tension: 0.3 },
+  ]);
+
+  document.getElementById('perf-status').textContent = filteredWeekly.length
+    ? `Checking revision history for ${filteredWeekly.length} item(s) to calculate a real reopen rate...`
+    : '';
+
+  const { rate, reopenedCount, total, failed } = await computeReopenRate(filteredWeekly, base, typeStateMap);
+  const reopenCell = document.querySelector('#perf-reopen-stat .num');
+  if (reopenCell) {
+    reopenCell.textContent = rate === null ? '—' : `${rate.toFixed(0)}%`;
+    reopenCell.style.color = rate && rate > 0 ? 'var(--bad)' : 'var(--good)';
+  }
+  document.getElementById('perf-status').textContent = total
+    ? `${reopenedCount} of ${total} item(s) completed this week show a genuine reopen (Completed → active → Completed) in their history.` +
+      (failed ? ` (${failed} item(s) couldn't be checked.)` : '')
+    : 'Nothing completed this week for this area yet.';
+
+  // ---- Defect leakage ----
+  if (leakageStatusNote) {
+    document.getElementById('meta-leakage').textContent = leakageStatusNote;
+    document.getElementById('leakage-env-stats').innerHTML = '';
+    document.getElementById('rows-leakage').innerHTML = '<tr><td colspan="7" class="empty">Not available</td></tr>';
+  } else {
+    const filteredLeakage = itemsInArea(leakageItems, areaPath)
+      .filter(it => new Date(field(it, 'System.ChangedDate')) >= thisWeekStart);
+
+    const envCounts = { Dev: 0, QA: 0, UAT: 0 };
+    filteredLeakage.forEach(it => {
+      const status = field(it, leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      if (env in envCounts) envCounts[env]++;
+    });
+    document.getElementById('leakage-env-stats').innerHTML = `
+      <div class="stat"><div class="num" style="color:var(--warn)">${envCounts.Dev}</div><div class="label">Leaked to Dev</div></div>
+      <div class="stat"><div class="num" style="color:var(--warn)">${envCounts.QA}</div><div class="label">Leaked to QA</div></div>
+      <div class="stat"><div class="num" style="color:var(--bad)">${envCounts.UAT}</div><div class="label">Leaked to UAT</div></div>
+    `;
+    document.getElementById('meta-leakage').textContent = `${filteredLeakage.length} defect(s) this week` +
+      (!leakageFieldsFound.client || !leakageFieldsFound.developer
+        ? ' (Client and/or Developer field not found on QA Test Case — showing what\'s available)' : '');
+
+    document.getElementById('rows-leakage').innerHTML = filteredLeakage.length
+      ? filteredLeakage
+          .sort((a, b) => (field(b, 'System.ChangedDate') > field(a, 'System.ChangedDate') ? 1 : -1))
+          .map(it => {
+            const status = field(it, leakageFieldsFound.testingStatus, '');
+            const env = status.replace('Test Failure - ', '').trim();
+            const client = leakageFieldsFound.client ? field(it, leakageFieldsFound.client, '—') : '—';
+            const developer = leakageFieldsFound.developer ? field(it, leakageFieldsFound.developer, '—') : '—';
+            const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+            const idCell = workItemBaseUrl
+              ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+              : `#${it.id}`;
+            return `<tr><td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${client}</td><td>${developer}</td>
+              <td><span class="badge badge-bad">${env}</span></td><td>${status}</td><td>${changed}</td></tr>`;
+          }).join('')
+      : '<tr><td colspan="7" class="empty">No defect leakage this week for this area</td></tr>';
+  }
+}
+
+// Looks up a field's real reference name by its display name (case-insensitive,
+// tries multiple candidate labels). Avoids hardcoding a guessed reference name
+// for org-specific custom fields like "Testing Status", "Client", "Developer".
+async function discoverFieldReferenceName(projectBase, workItemType, displayNameCandidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = displayNameCandidates.map(c => c.toLowerCase());
+    const match = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return match ? match.referenceName : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function loadDashboard() {
   clearError();
   const org = document.getElementById('org').value.trim();
@@ -572,6 +750,32 @@ async function loadDashboard() {
     const removedOrCompleted = `(${buildStateClause(typeStateMap, 'Completed', false)} OR ${buildStateClause(typeStateMap, 'Removed', false)})`;
     const everCompletedClause = buildEverCompletedClause(typeStateMap);
 
+    let leakageItems = [];
+    let leakageFieldsFound = { testingStatus: null, client: null, developer: null };
+    let leakageStatusNote = '';
+    if (witTypes.includes('QA Test Case')) {
+      setStatus('Looking up defect leakage fields...');
+      const testingStatusField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Testing Status']);
+      const clientField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Client', 'Client Name']);
+      const developerField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Developer', 'Developer Name']);
+      leakageFieldsFound = { testingStatus: testingStatusField, client: clientField, developer: developerField };
+
+      if (testingStatusField) {
+        const leakageFieldList = ['System.Id', 'System.Title', 'System.ChangedDate', 'System.AreaPath', testingStatusField, clientField, developerField].filter(Boolean);
+        const leakWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND [System.WorkItemType] = 'QA Test Case'
+                  AND [${testingStatusField}] IN ('Test Failure - Dev','Test Failure - QA','Test Failure - UAT')
+                  AND [System.ChangedDate] >= @Today - 27
+                  ORDER BY [System.ChangedDate] DESC`, 'Defect leakage (QA Test Case)');
+        leakageItems = await getItems(base, leakWiql.workItems.map(w => w.id), leakageFieldList);
+      } else {
+        leakageStatusNote = 'Couldn\'t find a "Testing Status" field on QA Test Case — check the exact field label and let me know if it\'s named differently.';
+      }
+    } else {
+      leakageStatusNote = 'This project has no "QA Test Case" work item type, so defect leakage can\'t be calculated.';
+    }
+
     setStatus('Finding sprints...');
     const currentIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
     const currentIter = currentIterData.value[0] || null;
@@ -586,12 +790,13 @@ async function loadDashboard() {
     }
 
     const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State',
-                    'System.AssignedTo', 'System.ChangedDate', 'System.IterationPath',
+                    'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate', 'System.IterationPath',
                     'System.AreaPath', 'System.Tags'];
 
     const now = new Date();
     const daysSinceMonday = (now.getDay() + 6) % 7;
     const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
+    const weekStartDateKey = new Date(now.getTime() - daysSinceMonday * 86400000).toISOString().slice(0, 10);
 
     setStatus('Fetching completed items...');
     const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
@@ -636,18 +841,24 @@ async function loadDashboard() {
       carryoverItems = await getItems(base, ids.workItems.map(w => w.id), fields);
     }
 
-    setStatus('Fetching this week\'s completions...');
-    const weeklyWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+    setStatus('Fetching completion history (4 weeks)...');
+    const trend4WeekWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
-              AND [System.ChangedDate] >= ${weekStartClause}
+              AND [System.ChangedDate] >= @Today - 27
               AND ${completedClause}
-              ORDER BY [System.ChangedDate] DESC`, 'Completed this week');
-    const weeklyItems = await getItems(base, weeklyWiql.workItems.map(w => w.id), fields);
+              ORDER BY [System.ChangedDate] DESC`, 'Completion history (4 weeks)');
+    const fourWeekItems = await getItems(base, trend4WeekWiql.workItems.map(w => w.id), fields);
+    const weeklyItems = fourWeekItems.filter(it => (field(it, 'System.ChangedDate') || '').slice(0, 10) >= weekStartDateKey);
 
     setStatus('Searching assigned resources...');
     const workloadWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
               AND [System.AssignedTo] <> '' AND NOT ${removedOrCompleted}`, 'Workload by developer');
     const workloadItems = await getItems(base, workloadWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Fetching area path breakdown...');
+    const areaWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+              AND NOT ${removedOrCompleted}`, 'Open items by area path');
+    const areaAllItems = await getItems(base, areaWiql.workItems.map(w => w.id), fields);
 
     async function fetchOpenBacklog(workItemType) {
       const states = typeStateMap[workItemType] || {};
@@ -804,6 +1015,18 @@ async function loadDashboard() {
     document.getElementById('sec-weekly').style.display = shown('weekly') ? 'block' : 'none';
     document.getElementById('meta-weekly').textContent = `${weeklyItems.length} item(s) completed since Monday`;
     document.getElementById('rows-weekly').innerHTML = rowsHtml(weeklyItems);
+    if (shown('weekly')) {
+      const weeklyByArea = {};
+      weeklyItems.forEach(it => {
+        const a = field(it, 'System.AreaPath', '(no area path)');
+        weeklyByArea[a] = (weeklyByArea[a] || 0) + 1;
+      });
+      const sortedWeeklyAreas = Object.entries(weeklyByArea).sort((a, b) => b[1] - a[1]);
+      document.getElementById('rows-weekly-area').innerHTML = sortedWeeklyAreas
+        .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
+        .join('') || '<tr><td colspan="2" class="empty">Nothing completed this week yet</td></tr>';
+      renderBarChart('chart-weekly-area', sortedWeeklyAreas.map(a => a[0]), sortedWeeklyAreas.map(a => a[1]), '#2e7d32');
+    }
 
     const workload = {};
     workloadItems.forEach(it => {
@@ -822,15 +1045,16 @@ async function loadDashboard() {
     }
 
     const areaBreakdown = {};
-    sprintItems.forEach(it => {
+    areaAllItems.forEach(it => {
       const a = field(it, 'System.AreaPath', '(no area path)');
       areaBreakdown[a] = (areaBreakdown[a] || 0) + 1;
     });
     document.getElementById('sec-area').style.display = shown('area') ? 'block' : 'none';
+    document.getElementById('meta-area').textContent = `${areaAllItems.length} open item(s) across the whole project`;
     document.getElementById('rows-area').innerHTML = Object.entries(areaBreakdown)
       .sort((a, b) => b[1] - a[1])
       .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
-      .join('') || '<tr><td colspan="2" class="empty">No current sprint items</td></tr>';
+      .join('') || '<tr><td colspan="2" class="empty">No open items found</td></tr>';
     if (shown('area')) {
       const sortedAreas = Object.entries(areaBreakdown).sort((a, b) => b[1] - a[1]);
       renderPieChart('chart-area', sortedAreas.map(a => a[0]), sortedAreas.map(a => a[1]));
@@ -861,6 +1085,14 @@ async function loadDashboard() {
 
     const sectionPrefs = {};
     SECTION_KEYS.forEach(k => sectionPrefs[k] = shown(k));
+
+    document.getElementById('sec-team-performance').style.display = shown('teamPerformance') ? 'block' : 'none';
+    if (shown('teamPerformance')) {
+      const perfAreaOptions = [...new Set([...areaAllItems, ...fourWeekItems].map(it => field(it, 'System.AreaPath', '')).filter(Boolean))];
+      populatePerfAreaOptions(perfAreaOptions);
+      perfData = { fourWeekItems, weeklyItems, base, typeStateMap, leakageItems, leakageFieldsFound, leakageStatusNote };
+      renderTeamPerformance();
+    }
 
     lastReport = {
       recipient, completedItems, sprintItems, carryoverItems, workload, bugItems, issueItems,
