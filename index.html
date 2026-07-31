@@ -95,6 +95,7 @@
     <div class="field full">
       <label>Report Sections — choose what to include before generating</label>
       <div class="section-toggles">
+        <label><input type="checkbox" id="show-insights" checked onchange="saveSectionPrefs()"> Automated insights</label>
         <label><input type="checkbox" id="show-burndown" checked onchange="saveSectionPrefs()"> Sprint burndown status</label>
         <label><input type="checkbox" id="show-completed" checked onchange="saveSectionPrefs()"> Completed (24h)</label>
         <label><input type="checkbox" id="show-reopened" checked onchange="saveSectionPrefs()"> Reopened items</label>
@@ -123,6 +124,15 @@
   <div id="error"></div>
 
   <div id="stats" class="grid" style="display:none"></div>
+
+  <section id="sec-insights">
+    <h2>Automated Insights</h2>
+    <div class="meta">Rule-based pattern detection on the data above — not AI-generated, just arithmetic. Use "Copy for AI Analysis" below for a genuine LLM narrative.</div>
+    <div id="insights-list" style="margin-top:10px"></div>
+    <button type="button" class="small" style="margin-top:14px" onclick="copyForAIAnalysis()">Copy for AI Analysis</button>
+    <span id="copy-status" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
+    <textarea id="ai-analysis-fallback" readonly style="display:none;width:100%;height:200px;margin-top:10px;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--border);border-radius:2px"></textarea>
+  </section>
 
   <section id="sec-burndown">
     <h2>Sprint burndown status</h2>
@@ -241,7 +251,7 @@
 let lastReport = null; // populated after a successful load, used by sendReport()
 let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
 const AGING_THRESHOLD_DAYS = 5;
-const SECTION_KEYS = ['burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge'];
+const SECTION_KEYS = ['insights','burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge'];
 
 // ---- tiny storage wrapper: plain localStorage, so this works the same
 // whether opened as a local file or hosted somewhere like GitHub Pages ----
@@ -705,6 +715,187 @@ async function discoverFieldReferenceName(projectBase, workItemType, displayName
   }
 }
 
+// ---- Automated Insights: rule-based pattern detection on already-fetched data ----
+function renderInsights(d) {
+  const insights = [];
+
+  // Chronic backlog aging
+  const chronicCount = d.backlogAgeBuckets['10+ days'] || 0;
+  if (chronicCount > 0) {
+    const chronicByArea = {};
+    [...d.bugItems, ...d.issueItems, ...d.carryoverItems].forEach(it => {
+      if ((daysAgo(field(it, 'System.ChangedDate')) || 0) > 10) {
+        const a = field(it, 'System.AreaPath', '(no area path)');
+        chronicByArea[a] = (chronicByArea[a] || 0) + 1;
+      }
+    });
+    const topArea = Object.entries(chronicByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'bad',
+      text: `${chronicCount} item(s) have sat unchanged for 10+ days — a sign of chronic backlog buildup rather than active issues.` +
+        (topArea ? ` Most concentrated in <strong>${topArea[0]}</strong> (${topArea[1]} item(s)).` : ''),
+    });
+  }
+
+  // Blocked concentration
+  if (d.blockedItems.length > 0) {
+    const blockedByArea = {};
+    d.blockedItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      blockedByArea[a] = (blockedByArea[a] || 0) + 1;
+    });
+    const topBlocked = Object.entries(blockedByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'warn',
+      text: `${d.blockedItems.length} item(s) currently marked blocked.` +
+        (topBlocked ? ` <strong>${topBlocked[0]}</strong> has the most (${topBlocked[1]}) — worth checking what's holding them up.` : ''),
+    });
+  }
+
+  // Workload imbalance
+  const workloadValues = Object.entries(d.workload).filter(([dev]) => dev !== 'Unassigned');
+  if (workloadValues.length >= 2) {
+    const avg = workloadValues.reduce((s, [, c]) => s + c, 0) / workloadValues.length;
+    const [topDev, topCount] = workloadValues.sort((a, b) => b[1] - a[1])[0];
+    if (topCount > avg * 2) {
+      insights.push({
+        severity: 'warn',
+        text: `<strong>${topDev}</strong> is carrying ${topCount} open item(s), more than double the team average (${avg.toFixed(1)}) — possible bottleneck or single point of failure.`,
+      });
+    }
+  }
+
+  // Carryover concentration
+  if (d.carryoverItems.length > 0) {
+    const carryByArea = {};
+    d.carryoverItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      carryByArea[a] = (carryByArea[a] || 0) + 1;
+    });
+    const topCarry = Object.entries(carryByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'warn',
+      text: `${d.carryoverItems.length} item(s) carried over from last sprint.` +
+        (topCarry ? ` <strong>${topCarry[0]}</strong> accounts for the most (${topCarry[1]}) — recurring carryover in one area usually points to underestimation or a recurring blocker there.` : ''),
+    });
+  }
+
+  // Bug-heavy areas (bug count as a share of that area's total open work)
+  if (d.bugItems.length > 0) {
+    const bugsByArea = {};
+    d.bugItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      bugsByArea[a] = (bugsByArea[a] || 0) + 1;
+    });
+    const ranked = Object.entries(bugsByArea)
+      .map(([area, bugCount]) => [area, bugCount, d.areaBreakdown[area] || bugCount])
+      .map(([area, bugCount, total]) => [area, bugCount, total ? bugCount / total : 0])
+      .sort((a, b) => b[2] - a[2]);
+    if (ranked.length && ranked[0][2] > 0.4 && ranked[0][1] >= 3) {
+      insights.push({
+        severity: 'bad',
+        text: `<strong>${ranked[0][0]}</strong> has a high bug concentration — ${ranked[0][1]} open bugs make up ${(ranked[0][2] * 100).toFixed(0)}% of that area's open work, worth a closer look at root cause rather than just triaging individually.`,
+      });
+    }
+  }
+
+  // Defect leakage hot spot
+  if (!d.leakageStatusNote && d.leakageItems && d.leakageItems.length > 0) {
+    const now3 = new Date();
+    const dsm3 = (now3.getDay() + 6) % 7;
+    const weekStart3 = new Date(now3.getTime() - dsm3 * 86400000);
+    const thisWeekLeaks = d.leakageItems.filter(it => new Date(field(it, 'System.ChangedDate')) >= weekStart3);
+    if (thisWeekLeaks.length > 0) {
+      const envCounts = {};
+      thisWeekLeaks.forEach(it => {
+        const status = field(it, d.leakageFieldsFound.testingStatus, '');
+        const env = status.replace('Test Failure - ', '').trim();
+        envCounts[env] = (envCounts[env] || 0) + 1;
+      });
+      const topEnv = Object.entries(envCounts).sort((a, b) => b[1] - a[1])[0];
+      const uatLeak = envCounts['UAT'] || 0;
+      insights.push({
+        severity: uatLeak > 0 ? 'bad' : 'warn',
+        text: `${thisWeekLeaks.length} defect(s) leaked this week` +
+          (topEnv ? `, most caught in <strong>${topEnv[0]}</strong> (${topEnv[1]}).` : '.') +
+          (uatLeak > 0 ? ` <strong>${uatLeak} reached UAT</strong> — these escaped both Dev and QA testing, the most expensive stage to catch defects.` : ''),
+      });
+    }
+  }
+
+  // Sprint risk
+  if (d.burndownStatusLabel === 'At risk') {
+    insights.push({ severity: 'bad', text: `Current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
+  }
+
+  document.getElementById('insights-list').innerHTML = insights.length
+    ? insights.map(i => `<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--${i.severity});background:var(--${i.severity}-bg);border-radius:2px;font-size:13px">${i.text}</div>`).join('')
+    : `<div style="color:var(--muted);font-size:13px">Nothing stands out from the current data — no chronic aging, no workload imbalance, no blocked concentration detected.</div>`;
+}
+
+async function copyForAIAnalysis() {
+  if (!lastReport) return;
+  const r = lastReport;
+  const workloadLines = Object.entries(r.workload).sort((a, b) => b[1] - a[1]).map(([d, c]) => `  ${d}: ${c}`).join('\n') || '  (none)';
+  const areaLines = Object.entries(r.areaBreakdown).sort((a, b) => b[1] - a[1]).map(([a, c]) => `  ${a}: ${c}`).join('\n') || '  (none)';
+  const ageLines = Object.entries(r.backlogAgeBuckets).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+
+  let leakageSection = 'Not available';
+  if (!r.leakageStatusNote && r.leakageItems) {
+    const envCounts = {};
+    r.leakageItems.forEach(it => {
+      const status = field(it, r.leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      envCounts[env] = (envCounts[env] || 0) + 1;
+    });
+    leakageSection = Object.entries(envCounts).map(([e, c]) => `  ${e}: ${c}`).join('\n') || '  (none this period)';
+  }
+
+  const prompt =
+`Analyze this Azure DevOps project data. I want you to identify recurring issues that point to bigger underlying problems, and suggest concrete process improvements. Look for patterns across areas, developers, and defect data rather than treating each number in isolation.
+
+=== SUMMARY ===
+Completed (24h): ${r.completedItems.length}
+Current sprint: ${r.sprintItems.length} item(s), status: ${r.burndownStatusLabel}
+Carried over from previous sprint: ${r.carryoverItems.length}
+Open bugs: ${r.bugItems.length}
+Open issues: ${r.issueItems.length}
+Blocked items: ${r.blockedItems.length}
+Reopened this week: ${r.reopenedItems.length}
+
+=== WORKLOAD BY DEVELOPER (open items) ===
+${workloadLines}
+
+=== OPEN WORK BY AREA PATH (full project) ===
+${areaLines}
+
+=== BACKLOG AGE DISTRIBUTION (bugs + issues + carryover) ===
+${ageLines}
+
+=== DEFECT LEAKAGE BY ENVIRONMENT (Test Failure - Dev/QA/UAT) ===
+${leakageSection}
+
+=== BLOCKED ITEMS (sample, up to 15) ===
+${summarizeItems(r.blockedItems, 15)}
+
+=== CARRIED OVER FROM PREVIOUS SPRINT (sample, up to 15) ===
+${summarizeItems(r.carryoverItems, 15)}
+
+Please: 1) identify any recurring patterns that suggest a systemic issue rather than isolated incidents, 2) flag anything that looks like a process or resourcing risk, 3) suggest 2-3 concrete, specific actions.`;
+
+  try {
+    await navigator.clipboard.writeText(prompt);
+    document.getElementById('copy-status').textContent = 'Copied — paste it into a Claude conversation.';
+    document.getElementById('ai-analysis-fallback').style.display = 'none';
+  } catch (e) {
+    const fallback = document.getElementById('ai-analysis-fallback');
+    fallback.value = prompt;
+    fallback.style.display = 'block';
+    fallback.select();
+    document.getElementById('copy-status').textContent = 'Clipboard blocked by the browser — select the text below and copy manually.';
+  }
+}
+
 async function loadDashboard() {
   clearError();
   const org = document.getElementById('org').value.trim();
@@ -1068,19 +1259,19 @@ async function loadDashboard() {
     document.getElementById('meta-issues').textContent = `${issueItems.length} unresolved issue(s)`;
     document.getElementById('rows-issues').innerHTML = rowsHtml(issueItems);
 
+    const backlogAgeSeen = new Map();
+    [...bugItems, ...issueItems, ...carryoverItems].forEach(it => backlogAgeSeen.set(it.id, it));
+    const backlogAgeBuckets = { '0-2 days': 0, '3-5 days': 0, '6-10 days': 0, '10+ days': 0 };
+    backlogAgeSeen.forEach(it => {
+      const age = daysAgo(field(it, 'System.ChangedDate')) || 0;
+      if (age <= 2) backlogAgeBuckets['0-2 days']++;
+      else if (age <= 5) backlogAgeBuckets['3-5 days']++;
+      else if (age <= 10) backlogAgeBuckets['6-10 days']++;
+      else backlogAgeBuckets['10+ days']++;
+    });
     document.getElementById('sec-backlog-age').style.display = shown('backlogAge') ? 'block' : 'none';
     if (shown('backlogAge')) {
-      const seen = new Map();
-      [...bugItems, ...issueItems, ...carryoverItems].forEach(it => seen.set(it.id, it));
-      const buckets = { '0-2 days': 0, '3-5 days': 0, '6-10 days': 0, '10+ days': 0 };
-      seen.forEach(it => {
-        const age = daysAgo(field(it, 'System.ChangedDate')) || 0;
-        if (age <= 2) buckets['0-2 days']++;
-        else if (age <= 5) buckets['3-5 days']++;
-        else if (age <= 10) buckets['6-10 days']++;
-        else buckets['10+ days']++;
-      });
-      renderBarChart('chart-backlog-age', Object.keys(buckets), Object.values(buckets), '#b45309');
+      renderBarChart('chart-backlog-age', Object.keys(backlogAgeBuckets), Object.values(backlogAgeBuckets), '#b45309');
     }
 
     const sectionPrefs = {};
@@ -1094,11 +1285,21 @@ async function loadDashboard() {
       renderTeamPerformance();
     }
 
+    document.getElementById('sec-insights').style.display = shown('insights') ? 'block' : 'none';
+    if (shown('insights')) {
+      renderInsights({
+        blockedItems, carryoverItems, workload, areaBreakdown, backlogAgeBuckets,
+        bugItems, issueItems, burndownStatusLabel, leakageItems, leakageFieldsFound, leakageStatusNote,
+      });
+    }
+
     lastReport = {
       recipient, completedItems, sprintItems, carryoverItems, workload, bugItems, issueItems,
       reopenedItems, blockedItems, weeklyItems, burndownStatusLabel, sectionPrefs,
       currentIterName: currentIter ? currentIter.name : 'none found',
       previousIterName: previousIter ? previousIter.name : 'no previous sprint found',
+      areaBreakdown, backlogAgeBuckets, leakageItems, leakageFieldsFound, leakageStatusNote,
+      currentSprintTotal: sprintItems.length,
     };
     sendBtn.disabled = false;
 
