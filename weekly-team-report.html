@@ -73,16 +73,16 @@
       <div class="field"><label>Team</label><input id="team" placeholder="your-project-name Team"></div>
       <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
     </div>
-    <h2 style="margin-top:18px">Area Paths</h2>
+    <h2 style="margin-top:18px">Teams</h2>
     <div class="config-grid">
-      <div class="field"><label>Dev Area Path</label><input id="areaDev" placeholder="e.g. CES\Dev"></div>
-      <div class="field"><label>QA Area Path</label><input id="areaQA" placeholder="e.g. CES\QA"></div>
-      <div class="field"><label>Analysis Area Path</label><input id="areaAnalysis" placeholder="e.g. CES\Analysis"></div>
+      <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+      <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
+      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
     </div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
       <button id="loadBtn" onclick="loadWeeklyItems()">Load This Week's Items</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;font-weight:400">
-        <input type="checkbox" id="remember"> Remember org/project/team/area paths on this device
+        <input type="checkbox" id="remember"> Remember org/project/team/team names on this device
       </label>
       <span id="status"></span>
     </div>
@@ -208,7 +208,7 @@ renderLegend();
       if (cfg.org || cfg.project || cfg.team) document.getElementById('remember').checked = true;
     } catch (e) {}
   }
-  const rawAreas = storage.get('ado-team-report-areas');
+  const rawAreas = storage.get('ado-team-report-teamnames');
   if (rawAreas) {
     try {
       const a = JSON.parse(rawAreas);
@@ -331,11 +331,11 @@ async function loadWeeklyItems() {
   const remember = document.getElementById('remember').checked;
 
   if (!org || !project || !team || !pat || !areaDev || !areaQA || !areaAnalysis) {
-    showError('Fill in the connection details and all three area paths first.');
+    showError('Fill in the connection details and all three team names first.');
     return;
   }
   if (remember) {
-    storage.set('ado-team-report-areas', JSON.stringify({ dev: areaDev, qa: areaQA, analysis: areaAnalysis }));
+    storage.set('ado-team-report-teamnames', JSON.stringify({ dev: areaDev, qa: areaQA, analysis: areaAnalysis }));
     let existingConfig = {};
     try { existingConfig = JSON.parse(storage.get('ado-config') || '{}'); } catch (e) {}
     storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project, team }));
@@ -365,21 +365,43 @@ async function loadWeeklyItems() {
     const daysSinceMonday = (now.getDay() + 6) % 7;
     const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
 
-    const areaMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
-    for (const [label, areaPath] of Object.entries(areaMap)) {
+    const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
+    const teamNotes = {};
+    for (const [label, teamName] of Object.entries(teamMap)) {
+      setStatus(`Looking up ${label} team's area path...`);
+      let areaClause = null;
+      try {
+        const tfvUrl = `${base}/${encodeURIComponent(project)}/${encodeURIComponent(teamName)}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`;
+        const tfvData = await adoGet(tfvUrl);
+        const values = tfvData.values || [];
+        if (values.length) {
+          areaClause = `(${values.map(v => v.includeChildren
+            ? `[System.AreaPath] UNDER '${v.value}'`
+            : `[System.AreaPath] = '${v.value}'`).join(' OR ')})`;
+        }
+      } catch (e) {
+        teamNotes[label] = `Couldn't find team "${teamName}" — check the exact team name (Project Settings → Teams).`;
+      }
+
+      if (!areaClause) {
+        if (!teamNotes[label]) teamNotes[label] = `Team "${teamName}" has no area path configured in its team settings.`;
+        itemsByArea[label] = [];
+        continue;
+      }
+
       setStatus(`Fetching ${label} items for this week...`);
       const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                 WHERE [System.TeamProject] = '${project}'
-                AND [System.AreaPath] UNDER '${areaPath}'
+                AND ${areaClause}
                 AND [System.ChangedDate] >= ${weekStartClause}
                 AND NOT ${removedClause}
                 ORDER BY [System.ChangedDate] DESC`, `${label} this week`);
       itemsByArea[label] = await getItems(base, result.workItems.map(w => w.id), fields);
     }
 
-    renderAreaSection('Dev');
-    renderAreaSection('QA');
-    renderAreaSection('Analysis');
+    renderAreaSection('Dev', teamNotes.Dev);
+    renderAreaSection('QA', teamNotes.QA);
+    renderAreaSection('Analysis', teamNotes.Analysis);
     updateSubject();
     setStatus('Done.');
   } catch (err) {
@@ -400,9 +422,13 @@ async function loadWeeklyItems() {
   }
 }
 
-function renderAreaSection(label) {
+function renderAreaSection(label, note) {
   const items = itemsByArea[label];
   document.getElementById(`section-${label}`).style.display = 'block';
+  if (note) {
+    document.getElementById(`rows-${label}`).innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--bad)">${note}</td></tr>`;
+    return;
+  }
   document.getElementById(`rows-${label}`).innerHTML = items.length
     ? items.map(it => {
         const wit = field(it, 'System.WorkItemType');
@@ -420,7 +446,7 @@ function renderAreaSection(label) {
           <td>${changed}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="7" class="empty">Nothing changed in this area this week</td></tr>`;
+    : `<tr><td colspan="7" class="empty">Nothing changed in this team's area this week</td></tr>`;
 }
 
 function toggleAll(label, checked) {
