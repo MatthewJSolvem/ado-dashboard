@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Weekly Team Report</title>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px 0; font-weight: 600; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  input, select, textarea { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+         color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 18px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 7px 10px; font-size: 12px; }
+  button.danger { background: var(--bad); }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  .area-section { display: none; }
+  .area-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .badge { padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; padding: 16px !important; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .group-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: end; }
+  .group-row .field { flex: 1; }
+  #export-preview { border: 1px solid var(--border); padding: 16px; background: #fff; margin-top: 12px; }
+  #export-preview table { font-size: 13px; }
+  #export-preview th { background: #f0f2f5; }
+</style>
+</head>
+<body>
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+    <h1>Weekly Team Report</h1>
+    <a href="index.html" target="_blank" rel="noopener"
+       style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+      ← Back to Dashboard
+    </a>
+  </div>
+  <div class="subtitle">A separate, focused view for building a curated weekly email — tick the items you want to report on, then copy the formatted result into Outlook.</div>
+
+  <div class="card">
+    <h2>Connection</h2>
+    <div class="config-grid">
+      <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
+      <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
+      <div class="field"><label>Team</label><input id="team" placeholder="your-project-name Team"></div>
+      <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
+    </div>
+    <h2 style="margin-top:18px">Area Paths</h2>
+    <div class="config-grid">
+      <div class="field"><label>Dev Area Path</label><input id="areaDev" placeholder="e.g. CES\Dev"></div>
+      <div class="field"><label>QA Area Path</label><input id="areaQA" placeholder="e.g. CES\QA"></div>
+      <div class="field"><label>Analysis Area Path</label><input id="areaAnalysis" placeholder="e.g. CES\Analysis"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
+      <button id="loadBtn" onclick="loadWeeklyItems()">Load This Week's Items</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;font-weight:400">
+        <input type="checkbox" id="remember"> Remember org/project/team/area paths on this device
+      </label>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="error"></div>
+
+  <div class="card">
+    <h2>Legend — state category</h2>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="card area-section" id="section-Dev">
+    <div class="area-header">
+      <h2>Dev — this week</h2>
+      <div>
+        <button type="button" class="small" onclick="toggleAll('Dev', true)">Select all</button>
+        <button type="button" class="small" onclick="toggleAll('Dev', false)">Select none</button>
+      </div>
+    </div>
+    <table><thead><tr><th></th><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-Dev"></tbody></table>
+  </div>
+
+  <div class="card area-section" id="section-QA">
+    <div class="area-header">
+      <h2>QA — this week</h2>
+      <div>
+        <button type="button" class="small" onclick="toggleAll('QA', true)">Select all</button>
+        <button type="button" class="small" onclick="toggleAll('QA', false)">Select none</button>
+      </div>
+    </div>
+    <table><thead><tr><th></th><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-QA"></tbody></table>
+  </div>
+
+  <div class="card area-section" id="section-Analysis">
+    <div class="area-header">
+      <h2>Analysis — this week</h2>
+      <div>
+        <button type="button" class="small" onclick="toggleAll('Analysis', true)">Select all</button>
+        <button type="button" class="small" onclick="toggleAll('Analysis', false)">Select none</button>
+      </div>
+    </div>
+    <table><thead><tr><th></th><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-Analysis"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Email Groups</h2>
+    <div class="group-row">
+      <div class="field"><label>Group Name</label><input id="groupName" placeholder="e.g. Management"></div>
+      <div class="field" style="flex:2"><label>Emails (comma-separated)</label><input id="groupEmails" placeholder="a@company.com, b@company.com"></div>
+      <button type="button" class="small" onclick="saveGroup()">Save</button>
+      <button type="button" class="small danger" onclick="deleteGroup()">Delete</button>
+    </div>
+    <div class="field">
+      <label>Use Saved Group</label>
+      <select id="groupSelect" onchange="applyGroup(this.value)"><option value="">-- none --</option></select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Compose</h2>
+    <div class="field" style="margin-bottom:12px">
+      <label>To</label>
+      <input id="toField" placeholder="paste or pick a group above, or type addresses">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Subject (auto-generated from your selection — edit if needed)</label>
+      <input id="subjectField">
+    </div>
+    <div class="field">
+      <label>Dedicated Message</label>
+      <textarea id="messageField" rows="4" placeholder="Add context for this week's report..."></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Generate</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button onclick="copyField('toField')">Copy To</button>
+      <button onclick="copyField('subjectField')">Copy Subject</button>
+      <button onclick="copyExportTable()">Copy Table for Outlook</button>
+      <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+    <div style="color:var(--muted);font-size:12px;margin-top:10px">
+      In Outlook: New Email → paste To → paste Subject → click in the body and paste (Ctrl+V) the table.
+      The formatting, colors, and legend carry over because it copies as real HTML, not plain text.
+    </div>
+    <div id="export-preview"></div>
+  </div>
+
+<script>
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+const CATEGORY_COLORS = {
+  Proposed: '#78909c', InProgress: '#1976d2', Resolved: '#8e24aa',
+  Completed: '#2e7d32', Removed: '#616161',
+};
+function categoryColor(cat) { return CATEGORY_COLORS[cat] || '#9e9e9e'; }
+
+function renderLegend() {
+  document.getElementById('legend').innerHTML = Object.entries(CATEGORY_COLORS).map(([cat, color]) =>
+    `<div class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${cat}</div>`
+  ).join('');
+}
+renderLegend();
+
+// ---- restore shared config (same keys the main dashboard uses, so this page
+// inherits org/project/team automatically if opened from the same site) ----
+(function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw);
+      document.getElementById('org').value = cfg.org || '';
+      document.getElementById('project').value = cfg.project || '';
+      document.getElementById('team').value = cfg.team || '';
+      if (cfg.org || cfg.project || cfg.team) document.getElementById('remember').checked = true;
+    } catch (e) {}
+  }
+  const rawAreas = storage.get('ado-team-report-areas');
+  if (rawAreas) {
+    try {
+      const a = JSON.parse(rawAreas);
+      document.getElementById('areaDev').value = a.dev || '';
+      document.getElementById('areaQA').value = a.qa || '';
+      document.getElementById('areaAnalysis').value = a.analysis || '';
+      document.getElementById('remember').checked = true;
+    } catch (e) {}
+  }
+})();
+
+let groups = {};
+function loadGroups() {
+  const raw = storage.get('ado-email-groups');
+  try { groups = raw ? JSON.parse(raw) : {}; } catch (e) { groups = {}; }
+  renderGroupOptions();
+}
+function renderGroupOptions() {
+  const sel = document.getElementById('groupSelect');
+  sel.innerHTML = '<option value="">-- none --</option>' +
+    Object.keys(groups).sort().map(n => `<option value="${n}">${n}</option>`).join('');
+}
+function applyGroup(name) {
+  if (!name || !groups[name]) return;
+  document.getElementById('toField').value = groups[name].join(', ');
+  document.getElementById('groupName').value = name;
+  document.getElementById('groupEmails').value = groups[name].join(', ');
+}
+function saveGroup() {
+  const name = document.getElementById('groupName').value.trim();
+  const emails = document.getElementById('groupEmails').value.split(',').map(e => e.trim()).filter(Boolean);
+  if (!name || !emails.length) { showError('Give the group a name and at least one email.'); return; }
+  groups[name] = emails;
+  storage.set('ado-email-groups', JSON.stringify(groups));
+  renderGroupOptions();
+  document.getElementById('groupSelect').value = name;
+}
+function deleteGroup() {
+  const name = document.getElementById('groupSelect').value;
+  if (!name) return;
+  delete groups[name];
+  storage.set('ado-email-groups', JSON.stringify(groups));
+  renderGroupOptions();
+}
+loadGroups();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function showError(html) {
+  const el = document.getElementById('error');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+function field(item, name, def = '') {
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+function buildStateClause(typeStateMap, category) {
+  const groups2 = [];
+  for (const [wit, states] of Object.entries(typeStateMap)) {
+    const matching = Object.entries(states).filter(([, cat]) => cat === category).map(([s]) => s);
+    if (matching.length) groups2.push(`([System.WorkItemType] = '${wit}' AND [System.State] IN (${matching.map(s => `'${s}'`).join(',')}))`);
+  }
+  return groups2.length ? `(${groups2.join(' OR ')})` : '(1=0)';
+}
+
+let itemsByArea = { Dev: [], QA: [], Analysis: [] };
+let typeStateMapGlobal = {};
+let workItemBaseUrl = '';
+const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate', 'System.AreaPath'];
+
+async function loadWeeklyItems() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const team = document.getElementById('team').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const areaDev = document.getElementById('areaDev').value.trim();
+  const areaQA = document.getElementById('areaQA').value.trim();
+  const areaAnalysis = document.getElementById('areaAnalysis').value.trim();
+  const remember = document.getElementById('remember').checked;
+
+  if (!org || !project || !team || !pat || !areaDev || !areaQA || !areaAnalysis) {
+    showError('Fill in the connection details and all three area paths first.');
+    return;
+  }
+  if (remember) {
+    storage.set('ado-team-report-areas', JSON.stringify({ dev: areaDev, qa: areaQA, analysis: areaAnalysis }));
+    let existingConfig = {};
+    try { existingConfig = JSON.parse(storage.get('ado-config') || '{}'); } catch (e) {}
+    storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project, team }));
+  }
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+    typeStateMapGlobal = typeStateMap;
+    const removedClause = buildStateClause(typeStateMap, 'Removed');
+
+    const now = new Date();
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
+
+    const areaMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
+    for (const [label, areaPath] of Object.entries(areaMap)) {
+      setStatus(`Fetching ${label} items for this week...`);
+      const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.AreaPath] UNDER '${areaPath}'
+                AND [System.ChangedDate] >= ${weekStartClause}
+                AND NOT ${removedClause}
+                ORDER BY [System.ChangedDate] DESC`, `${label} this week`);
+      itemsByArea[label] = await getItems(base, result.workItems.map(w => w.id), fields);
+    }
+
+    renderAreaSection('Dev');
+    renderAreaSection('QA');
+    renderAreaSection('Analysis');
+    updateSubject();
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server, same as the main dashboard would hit.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — check the PAT has Work Items (Read) scope.');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const label = err.label ? `<strong>Step:</strong> ${err.label}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      showError(`<strong>${err.message.replace('HTTP_', 'HTTP ')}.</strong><br>${label}${detail}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderAreaSection(label) {
+  const items = itemsByArea[label];
+  document.getElementById(`section-${label}`).style.display = 'block';
+  document.getElementById(`rows-${label}`).innerHTML = items.length
+    ? items.map(it => {
+        const wit = field(it, 'System.WorkItemType');
+        const state = field(it, 'System.State');
+        const cat = (typeStateMapGlobal[wit] || {})[state] || '';
+        const color = categoryColor(cat);
+        const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+        return `<tr>
+          <td><input type="checkbox" data-area="${label}" data-id="${it.id}" onchange="updateSubject()" checked></td>
+          <td><a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a></td>
+          <td>${field(it, 'System.Title')}</td>
+          <td>${wit}</td>
+          <td><span class="badge" style="background:${color}22;color:${color}">${state}</span></td>
+          <td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+          <td>${changed}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="7" class="empty">Nothing changed in this area this week</td></tr>`;
+}
+
+function toggleAll(label, checked) {
+  document.querySelectorAll(`input[type=checkbox][data-area="${label}"]`).forEach(cb => cb.checked = checked);
+  updateSubject();
+}
+
+function getCheckedItems() {
+  const result = { Dev: [], QA: [], Analysis: [] };
+  document.querySelectorAll('input[type=checkbox][data-area]').forEach(cb => {
+    if (cb.checked) {
+      const label = cb.getAttribute('data-area');
+      const id = parseInt(cb.getAttribute('data-id'), 10);
+      const item = itemsByArea[label].find(it => it.id === id);
+      if (item) result[label].push(item);
+    }
+  });
+  return result;
+}
+
+function updateSubject() {
+  const checked = getCheckedItems();
+  const areasWithItems = Object.entries(checked).filter(([, items]) => items.length > 0).map(([label]) => label);
+  const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  const subjectField = document.getElementById('subjectField');
+  if (!areasWithItems.length) {
+    subjectField.value = `Weekly Status Report — ${dateStr}`;
+  } else {
+    subjectField.value = `Weekly Status Report — ${areasWithItems.join(', ')} — ${dateStr}`;
+  }
+}
+
+async function copyField(id) {
+  const el = document.getElementById(id);
+  el.select();
+  try {
+    await navigator.clipboard.writeText(el.value);
+    document.getElementById('copy-status').textContent = 'Copied.';
+  } catch (e) {
+    document.getElementById('copy-status').textContent = 'Select the text above and copy manually (Ctrl+C).';
+  }
+}
+
+function buildExportHtml() {
+  const checked = getCheckedItems();
+  const message = document.getElementById('messageField').value.trim();
+  let html = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#1a1a1a">';
+  if (message) {
+    html += `<p style="white-space:pre-wrap;margin-bottom:16px">${message.replace(/</g, '&lt;')}</p>`;
+  }
+  ['Dev', 'QA', 'Analysis'].forEach(label => {
+    const items = checked[label];
+    if (!items.length) return;
+    html += `<h3 style="margin:18px 0 8px 0">${label}</h3>`;
+    html += `<table style="border-collapse:collapse;width:100%;font-size:13px">
+      <thead><tr style="background:#f0f2f5">
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">ID</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Title</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Type</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">State</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Assigned To</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Last Changed</th>
+      </tr></thead><tbody>`;
+    items.forEach(it => {
+      const wit = field(it, 'System.WorkItemType');
+      const state = field(it, 'System.State');
+      const cat = (typeStateMapGlobal[wit] || {})[state] || '';
+      const color = categoryColor(cat);
+      const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+      html += `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">#${it.id}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${field(it, 'System.Title')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${wit}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0"><span style="background:${color}22;color:${color};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">${state}</span></td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${changed}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  });
+  html += `<h4 style="margin:18px 0 6px 0">Legend</h4><table style="border-collapse:collapse"><tbody>`;
+  Object.entries(CATEGORY_COLORS).forEach(([cat, color]) => {
+    html += `<tr><td style="padding:2px 8px"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px"></span></td><td style="padding:2px 8px;font-size:12px">${cat}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+async function copyExportTable() {
+  const checked = getCheckedItems();
+  const totalChecked = checked.Dev.length + checked.QA.length + checked.Analysis.length;
+  if (!totalChecked) {
+    document.getElementById('copy-status').textContent = 'Nothing ticked — select at least one item first.';
+    return;
+  }
+  const html = buildExportHtml();
+  document.getElementById('export-preview').innerHTML = html;
+
+  try {
+    const item = new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([document.getElementById('export-preview').innerText], { type: 'text/plain' }),
+    });
+    await navigator.clipboard.write([item]);
+    document.getElementById('copy-status').textContent = 'Copied — paste (Ctrl+V) into the body of a new Outlook email.';
+  } catch (e) {
+    // Fallback: select the rendered preview and use the browser's own copy command
+    const range = document.createRange();
+    range.selectNode(document.getElementById('export-preview'));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    try {
+      document.execCommand('copy');
+      document.getElementById('copy-status').textContent = 'Copied — paste (Ctrl+V) into the body of a new Outlook email.';
+    } catch (e2) {
+      document.getElementById('copy-status').textContent = 'Auto-copy blocked by the browser — the table below is selected, press Ctrl+C manually.';
+    }
+  }
+}
+</script>
+</body>
+</html>
