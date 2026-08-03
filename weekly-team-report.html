@@ -63,7 +63,7 @@
       ← Back to Dashboard
     </a>
   </div>
-  <div class="subtitle">A separate, focused view for building a curated weekly email — tick the items you want to report on, then copy the formatted result into Outlook.</div>
+  <div class="subtitle">A separate, focused view for building a curated weekly email — shows each team's actual current sprint, tick the items you want to report on, then send.</div>
 
   <div class="card">
     <h2>Connection</h2>
@@ -80,7 +80,7 @@
       <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
     </div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
-      <button id="loadBtn" onclick="loadWeeklyItems()">Load This Week's Items</button>
+      <button id="loadBtn" onclick="loadWeeklyItems()">Load Current Sprints</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;font-weight:400">
         <input type="checkbox" id="remember"> Remember org/project/team/team names on this device
       </label>
@@ -97,7 +97,7 @@
 
   <div class="card area-section" id="section-Dev">
     <div class="area-header">
-      <h2>Dev — this week</h2>
+      <h2 id="title-Dev">Dev</h2>
       <div>
         <button type="button" class="small" onclick="toggleAll('Dev', true)">Select all</button>
         <button type="button" class="small" onclick="toggleAll('Dev', false)">Select none</button>
@@ -109,7 +109,7 @@
 
   <div class="card area-section" id="section-QA">
     <div class="area-header">
-      <h2>QA — this week</h2>
+      <h2 id="title-QA">QA</h2>
       <div>
         <button type="button" class="small" onclick="toggleAll('QA', true)">Select all</button>
         <button type="button" class="small" onclick="toggleAll('QA', false)">Select none</button>
@@ -121,7 +121,7 @@
 
   <div class="card area-section" id="section-Analysis">
     <div class="area-header">
-      <h2>Analysis — this week</h2>
+      <h2 id="title-Analysis">Analysis</h2>
       <div>
         <button type="button" class="small" onclick="toggleAll('Analysis', true)">Select all</button>
         <button type="button" class="small" onclick="toggleAll('Analysis', false)">Select none</button>
@@ -164,14 +164,16 @@
   <div class="card">
     <h2>Generate</h2>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button onclick="copyField('toField')">Copy To</button>
-      <button onclick="copyField('subjectField')">Copy Subject</button>
-      <button onclick="copyExportTable()">Copy Table for Outlook</button>
+      <button onclick="copyExportTable()">1. Copy Table</button>
+      <button onclick="openEmail()">2. Open Email in Outlook</button>
       <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
     </div>
     <div style="color:var(--muted);font-size:12px;margin-top:10px">
-      In Outlook: New Email → paste To → paste Subject → click in the body and paste (Ctrl+V) the table.
-      The formatting, colors, and legend carry over because it copies as real HTML, not plain text.
+      Click <strong>Copy Table</strong> first, then <strong>Open Email</strong> — this actually opens a new email in
+      your default mail app with the To, Subject, and your message already filled in. Click into the body and paste
+      (Ctrl+V) to add the table below your message — the table's colors and structure carry over because it's copied
+      as real formatting, not plain text (mailto links can't carry a formatted table themselves, that's a browser/email
+      standard limit, not something this page can bypass).
     </div>
     <div id="export-preview"></div>
   </div>
@@ -182,16 +184,48 @@ const storage = {
   set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
 };
 
+let itemsByArea = { Dev: [], QA: [], Analysis: [] };
+let typeStateMapGlobal = {};
+let workItemBaseUrl = '';
+
 const CATEGORY_COLORS = {
   Proposed: '#78909c', InProgress: '#1976d2', Resolved: '#8e24aa',
   Completed: '#2e7d32', Removed: '#616161',
 };
+// Solid (non-alpha) tints for badge backgrounds. Outlook's compose window
+// renders via Word's HTML engine, which silently drops 8-digit hex-with-alpha
+// colors (e.g. "#1976d222") - so badges need real, precomputed solid hex here.
+const CATEGORY_BG = {
+  Proposed: '#eceff1', InProgress: '#e3f2fd', Resolved: '#f3e5f5',
+  Completed: '#e8f5e9', Removed: '#eeeeee',
+};
 function categoryColor(cat) { return CATEGORY_COLORS[cat] || '#9e9e9e'; }
+function categoryBg(cat) { return CATEGORY_BG[cat] || '#f0f0f0'; }
 
+const CATEGORY_DESCRIPTIONS = {
+  Proposed: 'Not yet started',
+  InProgress: 'Actively being worked on',
+  Resolved: 'Believed complete, pending verification',
+  Completed: 'Finished and verified',
+  Removed: 'Cancelled or no longer relevant',
+};
+
+// Built from whatever states actually show up in the loaded items, not a
+// generic fixed list — so it only ever describes states you'll actually see.
 function renderLegend() {
-  document.getElementById('legend').innerHTML = Object.entries(CATEGORY_COLORS).map(([cat, color]) =>
-    `<div class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${cat}</div>`
-  ).join('');
+  const seen = new Map(); // "Type|State" -> {type, state, category}
+  Object.values(itemsByArea).forEach(items => {
+    items.forEach(it => {
+      const wit = field(it, 'System.WorkItemType');
+      const state = field(it, 'System.State');
+      const category = (typeStateMapGlobal[wit] || {})[state] || '';
+      seen.set(`${wit}|${state}`, { wit, state, category });
+    });
+  });
+  const rows = [...seen.values()].sort((a, b) => a.state.localeCompare(b.state) || a.wit.localeCompare(b.wit));
+  document.getElementById('legend').innerHTML = rows.length
+    ? rows.map(r => `<div class="legend-item"><strong>${r.state}</strong> (${r.wit}) — ${CATEGORY_DESCRIPTIONS[r.category] || 'Unspecified status'}</div>`).join('')
+    : `<div style="color:var(--muted);font-size:12px">Load the sprints above to see which states are actually in use.</div>`;
 }
 renderLegend();
 
@@ -314,9 +348,6 @@ function buildStateClause(typeStateMap, category) {
   return groups2.length ? `(${groups2.join(' OR ')})` : '(1=0)';
 }
 
-let itemsByArea = { Dev: [], QA: [], Analysis: [] };
-let typeStateMapGlobal = {};
-let workItemBaseUrl = '';
 const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate', 'System.AreaPath'];
 
 async function loadWeeklyItems() {
@@ -361,47 +392,43 @@ async function loadWeeklyItems() {
     typeStateMapGlobal = typeStateMap;
     const removedClause = buildStateClause(typeStateMap, 'Removed');
 
-    const now = new Date();
-    const daysSinceMonday = (now.getDay() + 6) % 7;
-    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
-
     const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
     const teamNotes = {};
+    const sprintNames = {};
     for (const [label, teamName] of Object.entries(teamMap)) {
-      setStatus(`Looking up ${label} team's area path...`);
-      let areaClause = null;
+      setStatus(`Looking up ${label} team's current sprint...`);
+      let iterationPath = null;
       try {
-        const tfvUrl = `${base}/${encodeURIComponent(project)}/${encodeURIComponent(teamName)}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`;
-        const tfvData = await adoGet(tfvUrl);
-        const values = tfvData.values || [];
-        if (values.length) {
-          areaClause = `(${values.map(v => v.includeChildren
-            ? `[System.AreaPath] UNDER '${v.value}'`
-            : `[System.AreaPath] = '${v.value}'`).join(' OR ')})`;
+        const iterUrl = `${base}/${encodeURIComponent(project)}/${encodeURIComponent(teamName)}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`;
+        const iterData = await adoGet(iterUrl);
+        if (iterData.value && iterData.value.length) {
+          iterationPath = iterData.value[0].path;
+          sprintNames[label] = iterData.value[0].name;
         }
       } catch (e) {
         teamNotes[label] = `Couldn't find team "${teamName}" — check the exact team name (Project Settings → Teams).`;
       }
 
-      if (!areaClause) {
-        if (!teamNotes[label]) teamNotes[label] = `Team "${teamName}" has no area path configured in its team settings.`;
+      if (!iterationPath) {
+        if (!teamNotes[label]) teamNotes[label] = `Team "${teamName}" has no active sprint set for the current date.`;
         itemsByArea[label] = [];
         continue;
       }
 
-      setStatus(`Fetching ${label} items for this week...`);
+      setStatus(`Fetching ${label}'s sprint items (${sprintNames[label]})...`);
       const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                 WHERE [System.TeamProject] = '${project}'
-                AND ${areaClause}
-                AND [System.ChangedDate] >= ${weekStartClause}
+                AND [System.IterationPath] = '${iterationPath}'
                 AND NOT ${removedClause}
-                ORDER BY [System.ChangedDate] DESC`, `${label} this week`);
+                ORDER BY [System.ChangedDate] DESC`, `${label} current sprint`);
       itemsByArea[label] = await getItems(base, result.workItems.map(w => w.id), fields);
     }
+    window.sprintNamesGlobal = sprintNames;
 
     renderAreaSection('Dev', teamNotes.Dev);
     renderAreaSection('QA', teamNotes.QA);
     renderAreaSection('Analysis', teamNotes.Analysis);
+    renderLegend();
     updateSubject();
     setStatus('Done.');
   } catch (err) {
@@ -425,6 +452,8 @@ async function loadWeeklyItems() {
 function renderAreaSection(label, note) {
   const items = itemsByArea[label];
   document.getElementById(`section-${label}`).style.display = 'block';
+  const sprintName = (window.sprintNamesGlobal || {})[label];
+  document.getElementById(`title-${label}`).textContent = sprintName ? `${label} — ${sprintName}` : label;
   if (note) {
     document.getElementById(`rows-${label}`).innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--bad)">${note}</td></tr>`;
     return;
@@ -446,7 +475,7 @@ function renderAreaSection(label, note) {
           <td>${changed}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="7" class="empty">Nothing changed in this team's area this week</td></tr>`;
+    : `<tr><td colspan="7" class="empty">Nothing in this team's current sprint</td></tr>`;
 }
 
 function toggleAll(label, checked) {
@@ -469,7 +498,10 @@ function getCheckedItems() {
 
 function updateSubject() {
   const checked = getCheckedItems();
-  const areasWithItems = Object.entries(checked).filter(([, items]) => items.length > 0).map(([label]) => label);
+  const sprintNames = window.sprintNamesGlobal || {};
+  const areasWithItems = Object.entries(checked)
+    .filter(([, items]) => items.length > 0)
+    .map(([label]) => sprintNames[label] ? `${label} (${sprintNames[label]})` : label);
   const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
   const subjectField = document.getElementById('subjectField');
   if (!areasWithItems.length) {
@@ -477,6 +509,17 @@ function updateSubject() {
   } else {
     subjectField.value = `Weekly Status Report — ${areasWithItems.join(', ')} — ${dateStr}`;
   }
+}
+
+function openEmail() {
+  const to = document.getElementById('toField').value.trim();
+  const subject = document.getElementById('subjectField').value.trim();
+  const message = document.getElementById('messageField').value.trim();
+  const body = message
+    ? `${message}\n\n[Paste the copied table here]`
+    : `[Paste the copied table here]`;
+  const mailto = `mailto:${encodeURIComponent(to).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
 }
 
 async function copyField(id) {
@@ -493,43 +536,49 @@ async function copyField(id) {
 function buildExportHtml() {
   const checked = getCheckedItems();
   const message = document.getElementById('messageField').value.trim();
-  let html = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#1a1a1a">';
+  const sprintNames = window.sprintNamesGlobal || {};
+  const statesUsed = new Map();
+  const FONT = "font-family:'Segoe UI',Arial,sans-serif;";
+  let html = `<div style="${FONT}font-size:13px;color:#1a1a1a">`;
   if (message) {
-    html += `<p style="white-space:pre-wrap;margin-bottom:16px">${message.replace(/</g, '&lt;')}</p>`;
+    html += `<p style="${FONT}white-space:pre-wrap;margin-bottom:16px">${message.replace(/</g, '&lt;')}</p>`;
   }
   ['Dev', 'QA', 'Analysis'].forEach(label => {
     const items = checked[label];
     if (!items.length) return;
-    html += `<h3 style="margin:18px 0 8px 0">${label}</h3>`;
-    html += `<table style="border-collapse:collapse;width:100%;font-size:13px">
-      <thead><tr style="background:#f0f2f5">
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">ID</th>
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Title</th>
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Type</th>
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">State</th>
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Assigned To</th>
-        <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfd8dc">Last Changed</th>
+    const heading = sprintNames[label] ? `${label} — ${sprintNames[label]}` : label;
+    html += `<h3 style="${FONT}margin:18px 0 8px 0">${heading}</h3>`;
+    html += `<table border="1" bordercolor="#cfd8dc" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;${FONT}font-size:13px">
+      <thead><tr>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">ID</th>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">Title</th>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">Type</th>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">State</th>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">Assigned To</th>
+        <th bgcolor="#f0f2f5" style="background:#f0f2f5;text-align:left;${FONT}font-size:12px">Last Changed</th>
       </tr></thead><tbody>`;
     items.forEach(it => {
       const wit = field(it, 'System.WorkItemType');
       const state = field(it, 'System.State');
       const cat = (typeStateMapGlobal[wit] || {})[state] || '';
-      const color = categoryColor(cat);
+      const textColor = categoryColor(cat);
+      const bg = categoryBg(cat);
+      statesUsed.set(`${wit}|${state}`, { wit, state, category: cat });
       const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
       html += `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">#${it.id}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${field(it, 'System.Title')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${wit}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0"><span style="background:${color}22;color:${color};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">${state}</span></td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${field(it, 'System.AssignedTo', 'Unassigned')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e0e0e0">${changed}</td>
+        <td style="${FONT}font-size:13px">#${it.id}</td>
+        <td style="${FONT}font-size:13px">${field(it, 'System.Title')}</td>
+        <td style="${FONT}font-size:13px">${wit}</td>
+        <td bgcolor="${bg}" style="background:${bg};color:${textColor};font-weight:bold;${FONT}font-size:12px">${state}</td>
+        <td style="${FONT}font-size:13px">${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+        <td style="${FONT}font-size:13px">${changed}</td>
       </tr>`;
     });
     html += '</tbody></table>';
   });
-  html += `<h4 style="margin:18px 0 6px 0">Legend</h4><table style="border-collapse:collapse"><tbody>`;
-  Object.entries(CATEGORY_COLORS).forEach(([cat, color]) => {
-    html += `<tr><td style="padding:2px 8px"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px"></span></td><td style="padding:2px 8px;font-size:12px">${cat}</td></tr>`;
+  html += `<h4 style="${FONT}margin:18px 0 6px 0">What each state means</h4><table border="1" bordercolor="#cfd8dc" cellpadding="6" cellspacing="0" style="border-collapse:collapse"><tbody>`;
+  [...statesUsed.values()].sort((a, b) => a.state.localeCompare(b.state) || a.wit.localeCompare(b.wit)).forEach(r => {
+    html += `<tr><td style="${FONT}font-size:12px"><strong>${r.state}</strong> (${r.wit})</td><td style="${FONT}font-size:12px">${CATEGORY_DESCRIPTIONS[r.category] || 'Unspecified status'}</td></tr>`;
   });
   html += '</tbody></table></div>';
   return html;
