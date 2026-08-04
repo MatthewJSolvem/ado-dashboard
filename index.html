@@ -457,10 +457,26 @@ function isBlocked(item) {
   return field(item, 'System.Tags', '').toLowerCase().includes('blocked');
 }
 
+// ADO's own state-category metadata can be wrong for a given process (confirmed:
+// this org's Bug type has a "Closed" state that ADO itself doesn't tag as
+// "Completed"). So alongside the category check, also treat these literal state
+// names as terminal regardless of what category ADO reports for them.
+const LITERAL_COMPLETED_STATES = ['Closed', 'Done'];
+const LITERAL_REMOVED_STATES = ['Removed'];
+
 function isCompletedState(item, typeStateMap) {
   const t = field(item, 'System.WorkItemType');
   const s = field(item, 'System.State');
+  if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(s.toLowerCase())) return true;
   return (typeStateMap[t] || {})[s] === 'Completed';
+}
+function isTerminalState(item, typeStateMap) {
+  const t = field(item, 'System.WorkItemType');
+  const s = field(item, 'System.State');
+  const sLower = s.toLowerCase();
+  if ([...LITERAL_COMPLETED_STATES, ...LITERAL_REMOVED_STATES].map(x => x.toLowerCase()).includes(sLower)) return true;
+  const cat = (typeStateMap[t] || {})[s];
+  return cat === 'Completed' || cat === 'Removed';
 }
 
 function daysAgo(dateStr) {
@@ -482,13 +498,29 @@ function buildStateClause(typeStateMap, category, negate) {
   return negate ? `NOT (${clause})` : `(${clause})`;
 }
 
+// Belt-and-suspenders clause matching literal state names directly, independent
+// of work item type or ADO's (possibly wrong) category tagging.
+function buildLiteralStateClause(stateNames) {
+  if (!stateNames.length) return '(1=0)';
+  return `[System.State] IN (${stateNames.map(s => `'${s}'`).join(',')})`;
+}
+
 // Raw WIQL uses the single keyword EVER (the "Was Ever" label only shows up
 // in the visual Query Editor UI, not the query language itself).
 function buildEverCompletedClause(typeStateMap) {
   const groups = [];
+  const seenStateNames = new Set();
   for (const [wit, states] of Object.entries(typeStateMap)) {
     Object.entries(states).filter(([, c]) => c === 'Completed').forEach(([s]) => {
       groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] EVER '${s}')`);
+      seenStateNames.add(s.toLowerCase());
+    });
+    // Also cover literal Closed/Done states even if ADO didn't tag them Completed
+    Object.keys(states).forEach(s => {
+      if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(s.toLowerCase()) && !seenStateNames.has(s.toLowerCase())) {
+        groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] EVER '${s}')`);
+        seenStateNames.add(s.toLowerCase());
+      }
     });
   }
   if (!groups.length) return '(1=0)';
@@ -968,8 +1000,8 @@ async function loadDashboard() {
       typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
     }
 
-    const completedClause = buildStateClause(typeStateMap, 'Completed', false);
-    const removedOrCompleted = `(${buildStateClause(typeStateMap, 'Completed', false)} OR ${buildStateClause(typeStateMap, 'Removed', false)})`;
+    const completedClause = `(${buildStateClause(typeStateMap, 'Completed', false)} OR ${buildLiteralStateClause(LITERAL_COMPLETED_STATES)})`;
+    const removedOrCompleted = `(${completedClause} OR ${buildStateClause(typeStateMap, 'Removed', false)} OR ${buildLiteralStateClause(LITERAL_REMOVED_STATES)})`;
     const everCompletedClause = buildEverCompletedClause(typeStateMap);
 
     let leakageItems = [];
@@ -1084,7 +1116,10 @@ async function loadDashboard() {
 
     async function fetchOpenBacklog(workItemType) {
       const states = typeStateMap[workItemType] || {};
-      const openStates = Object.entries(states).filter(([, c]) => c !== 'Completed' && c !== 'Removed').map(([s]) => s);
+      const terminalNames = [...LITERAL_COMPLETED_STATES, ...LITERAL_REMOVED_STATES].map(x => x.toLowerCase());
+      const openStates = Object.keys(states).filter(s =>
+        states[s] !== 'Completed' && states[s] !== 'Removed' && !terminalNames.includes(s.toLowerCase())
+      );
       if (!openStates.length) return [];
       const stateList = openStates.map(s => `'${s}'`).join(',');
       const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
