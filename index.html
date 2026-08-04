@@ -220,9 +220,21 @@
   <section id="sec-workload">
     <h2>Workload by developer</h2>
     <div class="meta" id="meta-workload"></div>
+    <div class="field" style="max-width:420px;margin-bottom:14px">
+      <label>Exclude from workload (comma-separated names — e.g. departed staff)</label>
+      <input id="excludeAssignees" placeholder="e.g. Osman, Azeem" onchange="saveExcludeAssignees()">
+    </div>
     <div style="height:220px;margin-bottom:16px"><canvas id="chart-workload"></canvas></div>
     <table><thead><tr><th>Developer</th><th>Items assigned</th></tr></thead>
     <tbody id="rows-workload"></tbody></table>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px">Click a developer's row to see exactly which items are being counted, so you can verify against Azure DevOps directly.</div>
+  </section>
+
+  <section id="sec-excluded-items">
+    <h2>Still assigned to excluded names</h2>
+    <div class="meta" id="meta-excluded-items"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-excluded-items"></tbody></table></div>
   </section>
 
   <section id="sec-area">
@@ -344,9 +356,22 @@ function shown(key) {
   return el ? el.checked : true;
 }
 
+function getExcludedAssignees() {
+  return document.getElementById('excludeAssignees').value
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+function restoreExcludeAssignees() {
+  const raw = storage.get('ado-exclude-assignees');
+  if (raw) document.getElementById('excludeAssignees').value = raw;
+}
+function saveExcludeAssignees() {
+  storage.set('ado-exclude-assignees', document.getElementById('excludeAssignees').value);
+}
+
 restoreConfig();
 loadProfiles();
 restoreSectionPrefs();
+restoreExcludeAssignees();
 
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
@@ -1225,20 +1250,47 @@ async function loadDashboard() {
       renderBarChart('chart-weekly-area', sortedWeeklyAreas.map(a => a[0]), sortedWeeklyAreas.map(a => a[1]), '#2e7d32');
     }
 
+    const excluded = getExcludedAssignees();
     const workload = {};
+    const workloadItemsByDev = {};
+    const excludedItems = [];
     workloadItems.forEach(it => {
       const a = field(it, 'System.AssignedTo', 'Unassigned');
+      if (excluded.includes(a.toLowerCase())) { excludedItems.push(it); return; }
       workload[a] = (workload[a] || 0) + 1;
+      (workloadItemsByDev[a] = workloadItemsByDev[a] || []).push(it);
     });
     document.getElementById('sec-workload').style.display = shown('workload') ? 'block' : 'none';
-    document.getElementById('meta-workload').textContent = `${workloadItems.length} open item(s) across the project, grouped by assignee`;
+    const excludedNote = excluded.length ? ` (excluding ${excluded.length} name(s) you've filtered out)` : '';
+    document.getElementById('meta-workload').textContent = `${Object.values(workload).reduce((a,b)=>a+b,0)} open item(s) across the project, grouped by assignee${excludedNote}`;
     document.getElementById('rows-workload').innerHTML = Object.entries(workload)
       .sort((a, b) => b[1] - a[1])
-      .map(([dev, count]) => `<tr><td>${dev}</td><td>${count}</td></tr>`)
+      .map(([dev, count], i) => `
+        <tr style="cursor:pointer" onclick="document.getElementById('workload-detail-${i}').style.display = document.getElementById('workload-detail-${i}').style.display === 'none' ? 'table-row' : 'none'">
+          <td>${dev} <span style="color:var(--muted);font-size:11px">(click to audit)</span></td><td>${count}</td>
+        </tr>
+        <tr id="workload-detail-${i}" style="display:none">
+          <td colspan="2" style="background:#f5f7fa">
+            ${workloadItemsByDev[dev].map(it => {
+              const state = field(it, 'System.State');
+              const wit = field(it, 'System.WorkItemType');
+              const idLink = workItemBaseUrl ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>` : `#${it.id}`;
+              return `<div style="padding:3px 0;font-size:12px">${idLink} ${field(it, 'System.Title')} — <span class="badge">${state}</span> (${wit})</div>`;
+            }).join('')}
+          </td>
+        </tr>`)
       .join('') || '<tr><td colspan="2" class="empty">No assigned open items found</td></tr>';
     if (shown('workload')) {
       const sortedWorkload = Object.entries(workload).sort((a, b) => b[1] - a[1]).slice(0, 12);
       renderBarChart('chart-workload', sortedWorkload.map(w => w[0]), sortedWorkload.map(w => w[1]), '#3f51b5');
+    }
+
+    document.getElementById('sec-excluded-items').style.display = (shown('workload') && excluded.length) ? 'block' : 'none';
+    if (excluded.length) {
+      document.getElementById('meta-excluded-items').textContent = excludedItems.length
+        ? `${excludedItems.length} open item(s) still assigned to a name on your exclude list — a cleanup worklist, not hidden data.`
+        : `No open items found for the excluded name(s) — nothing to reassign.`;
+      document.getElementById('rows-excluded-items').innerHTML = rowsHtml(excludedItems);
     }
 
     const areaBreakdown = {};
