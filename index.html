@@ -116,6 +116,7 @@
         <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
         <label><input type="checkbox" id="show-completionTrend" checked onchange="saveSectionPrefs()"> Completion trend chart</label>
         <label><input type="checkbox" id="show-backlogAge" checked onchange="saveSectionPrefs()"> Backlog age chart</label>
+        <label><input type="checkbox" id="show-comments" checked onchange="saveSectionPrefs()"> Recent comments (current sprint)</label>
       </div>
     </div>
 
@@ -179,6 +180,13 @@
     <div class="meta" id="meta-sprint"></div>
     <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
     <tbody id="rows-sprint"></tbody></table></div>
+  </section>
+
+  <section id="sec-comments">
+    <h2>Recent comments — current sprint</h2>
+    <div class="meta" id="meta-comments">Scoped to this sprint since checking comments needs one lookup per item — keeps this fast rather than scanning the whole project.</div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th></tr></thead>
+    <tbody id="rows-comments"></tbody></table></div>
   </section>
 
   <section id="sec-carryover">
@@ -269,7 +277,7 @@
 let lastReport = null; // populated after a successful load, used by sendReport()
 let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
 const AGING_THRESHOLD_DAYS = 5;
-const SECTION_KEYS = ['insights','burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge'];
+const SECTION_KEYS = ['insights','burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge','comments'];
 
 // ---- tiny storage wrapper: plain localStorage, so this works the same
 // whether opened as a local file or hosted somewhere like GitHub Pages ----
@@ -891,6 +899,20 @@ function renderInsights(d) {
     insights.push({ severity: 'bad', text: `Current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
   }
 
+  // Unanswered comments
+  if (d.commentRows && d.commentRows.length) {
+    const unanswered = d.commentRows.filter(r => r.unanswered);
+    if (unanswered.length > 0) {
+      const stalest = unanswered.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+      const stalestAge = daysAgo(stalest.date);
+      insights.push({
+        severity: unanswered.length >= 3 ? 'bad' : 'warn',
+        text: `${unanswered.length} comment(s) in the current sprint are awaiting a response from the assignee.` +
+          (stalestAge !== null ? ` The oldest has been sitting <strong>${stalestAge} day(s)</strong> (item #${stalest.item.id}).` : ''),
+      });
+    }
+  }
+
   document.getElementById('insights-list').innerHTML = insights.length
     ? insights.map(i => `<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--${i.severity});background:var(--${i.severity}-bg);border-radius:2px;font-size:13px">${i.text}</div>`).join('')
     : `<div style="color:var(--muted);font-size:13px">Nothing stands out from the current data — no chronic aging, no workload imbalance, no blocked concentration detected.</div>`;
@@ -1085,6 +1107,30 @@ async function loadDashboard() {
       sprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
     }
 
+    // ---- recent comments (current sprint only - one API call per item, no
+    // batch-across-items endpoint exists for work item comments) ----
+    let commentRows = [];
+    if (shown('comments') && sprintItems.length) {
+      let checked = 0;
+      for (const it of sprintItems) {
+        checked++;
+        setStatus(`Checking comments (${checked}/${sprintItems.length})...`);
+        try {
+          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1`);
+          const comments = (cData.comments || []).filter(c => !c.isDeleted);
+          if (!comments.length) continue;
+          comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
+          const last = comments[comments.length - 1];
+          const lastAuthor = (last.createdBy && last.createdBy.displayName) || 'Unknown';
+          const assignedTo = field(it, 'System.AssignedTo', 'Unassigned');
+          const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
+          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered });
+        } catch (e) {
+          // skip items whose comments couldn't be fetched rather than aborting the whole load
+        }
+      }
+    }
+
     let carryoverItems = [];
     if (previousIter) {
       setStatus('Fetching previous sprint carry-over...');
@@ -1197,6 +1243,7 @@ async function loadDashboard() {
       { key: 'blocked', color: 'var(--bad)', value: blockedItems.length, label: 'Blocked items', delta: '' },
       { key: 'reopened', color: 'var(--bad)', value: reopenedItems.length, label: 'Reopened items', delta: '' },
       { key: 'weekly', color: 'var(--good)', value: weeklyItems.length, label: 'Completed this week', delta: '' },
+      { key: 'comments', color: 'var(--bad)', value: commentRows.filter(r => r.unanswered).length, label: 'Unanswered comments', delta: '' },
     ];
     const visibleStats = statDefs.filter(s => shown(s.key));
     document.getElementById('stats').style.display = visibleStats.length ? 'grid' : 'none';
@@ -1263,6 +1310,28 @@ async function loadDashboard() {
     document.getElementById('title-sprint').textContent = `Current sprint — ${currentIter ? currentIter.name : 'none found'}`;
     document.getElementById('meta-sprint').textContent = `${sprintItems.length} item(s)`;
     document.getElementById('rows-sprint').innerHTML = rowsHtml(sprintItems);
+
+    document.getElementById('sec-comments').style.display = shown('comments') ? 'block' : 'none';
+    if (shown('comments')) {
+      const unansweredCount = commentRows.filter(r => r.unanswered).length;
+      document.getElementById('meta-comments').textContent =
+        `${commentRows.length} item(s) with comments in this sprint, ${unansweredCount} awaiting a response from the assignee.`;
+      document.getElementById('rows-comments').innerHTML = commentRows.length
+        ? commentRows
+            .sort((a, b) => (b.unanswered - a.unanswered) || (new Date(b.date) - new Date(a.date)))
+            .map(r => {
+              const escText = (r.text || '').replace(/</g, '&lt;').slice(0, 140);
+              const age = daysAgo(r.date);
+              const idLink = workItemBaseUrl
+                ? `<a href="${workItemBaseUrl}${r.item.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${r.item.id}</a>`
+                : `#${r.item.id}`;
+              const statusBadge = r.unanswered
+                ? `<span class="badge badge-bad">Unanswered</span>`
+                : `<span class="badge badge-good">Responded</span>`;
+              return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${(r.text||'').length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td></tr>`;
+            }).join('')
+        : '<tr><td colspan="6" class="empty">No comments found on current sprint items</td></tr>';
+    }
 
     document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
     document.getElementById('title-carryover').textContent = `Carried over — ${previousIter ? previousIter.name : 'no previous sprint found'}`;
@@ -1383,6 +1452,7 @@ async function loadDashboard() {
       renderInsights({
         blockedItems, carryoverItems, workload, areaBreakdown, backlogAgeBuckets,
         bugItems, issueItems, burndownStatusLabel, leakageItems, leakageFieldsFound, leakageStatusNote,
+        commentRows,
       });
     }
 
