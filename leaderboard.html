@@ -98,17 +98,33 @@
   td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   tr:last-child td { border-bottom: none; }
   .avatar-sm { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px; background:#eee; }
+  @media print {
+    body { background: #fff !important; padding: 0; }
+    .no-print { display: none !important; }
+    #print-header { display: block !important; margin-bottom: 16px; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    .card, .podium-card { box-shadow: none !important; border: 1px solid #ddd; break-inside: avoid; }
+    #champion { break-inside: avoid; }
+    a[href]:after { content: ""; }
+  }
 </style>
 </head>
 <body>
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px" class="no-print">
     <h1>🏆 Team Leaderboard</h1>
-    <a href="index.html" target="_blank" rel="noopener" style="font-size:13px;color:#ffd54f;text-decoration:none;font-weight:600;white-space:nowrap">← Back to Dashboard</a>
+    <div style="display:flex;gap:16px;align-items:center">
+      <button onclick="exportReport()" style="background:#ffd54f;color:#1a1a2e">📄 Export Report</button>
+      <a href="index.html" target="_blank" rel="noopener" style="font-size:13px;color:#ffd54f;text-decoration:none;font-weight:600;white-space:nowrap">← Back to Dashboard</a>
+    </div>
   </div>
-  <div class="subtitle">Weekly bragging rights — every podium is scoped to this week only (since Monday).</div>
+  <div class="subtitle no-print">Weekly bragging rights — every podium is scoped to this week only (since Monday).</div>
+  <div id="print-header" style="display:none">
+    <h1 style="color:#1a1a2e">🏆 Team Leaderboard</h1>
+    <div class="subtitle" id="print-date" style="color:#455a64"></div>
+  </div>
 
-  <div class="card">
+  <div class="card no-print">
     <h2>Connection</h2>
     <div class="config-grid">
       <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
@@ -126,7 +142,7 @@
 
   <div id="error"></div>
 
-  <div class="card" id="sec-roster" style="display:none">
+  <div class="card no-print" id="sec-roster" style="display:none">
     <h2>Manager Roster</h2>
     <div class="meta">Name and photo per team — saved on this device, used on the podiums below.</div>
     <div id="roster-list"></div>
@@ -256,6 +272,12 @@ function isTerminal(typeStateMap, item) {
 }
 
 let teams = [];
+function exportReport() {
+  const dateStr = new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('print-date').textContent = `Week of ${dateStr}`;
+  window.print();
+}
+
 async function loadTeams() {
   clearError();
   const org = document.getElementById('org').value.trim();
