@@ -100,6 +100,21 @@
     <div id="insights-list"></div>
   </div>
 
+  <div class="card" id="sec-deeper" style="display:none">
+    <h2>Deeper Analysis — what the bugs are actually about</h2>
+    <div class="meta">Looks past structural patterns (which area, who's assigned) into the actual bug text and timing, to separate a shared root cause from unrelated symptoms.</div>
+
+    <h3 style="font-size:13px;margin:16px 0 6px 0">Recurring terms in bug titles &amp; descriptions</h3>
+    <div id="deeper-terms" class="checkbox-list" style="margin-top:4px"></div>
+
+    <h3 style="font-size:13px;margin:20px 0 6px 0">Recurring tags on bugs</h3>
+    <div id="deeper-tags" class="checkbox-list" style="margin-top:4px"></div>
+
+    <h3 style="font-size:13px;margin:20px 0 6px 0">Bug creation timeline</h3>
+    <div class="meta" style="margin-bottom:8px">A spike here usually means one triggering event (a release, a data change, a config change) rather than many unrelated bugs appearing on their own.</div>
+    <div style="height:200px"><canvas id="chart-timeline"></canvas></div>
+  </div>
+
   <section id="sec-charts">
     <div class="card">
       <h2>By Area Path</h2>
@@ -414,6 +429,73 @@ function rowsHtml(items, typeStateMap) {
   }).join('');
 }
 
+// ---- Deeper analysis: what the bugs are actually about, not just where ----
+const STOPWORDS = new Set(['the','a','an','is','are','was','were','be','been','being','to','for','and','or',
+  'of','in','on','with','this','that','these','those','it','its','as','at','by','from','if','when','then',
+  'so','we','i','you','not','but','can','will','would','should','could','has','have','had','do','does','did',
+  'there','their','they','them','also','into','than','after','before','while','which','what','who','how',
+  'need','needs','needed','please','still','also','just','get','gets','getting','issue','issues','bug','bugs',
+  'error','errors','problem','problems','fix','fixed','fixing','system','user','users']);
+
+function tokenize(text) {
+  return (text || '').toLowerCase()
+    .replace(/<[^>]*>/g, ' ')          // strip HTML from Description
+    .replace(/[^a-z0-9\s]/g, ' ')      // strip punctuation
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !STOPWORDS.has(w) && isNaN(w));
+}
+
+function extractTopTerms(items, searchTermLower, limit) {
+  const counts = {};
+  items.forEach(it => {
+    const text = field(it, 'System.Title') + ' ' + field(it, 'System.Description', '');
+    const seenInThisItem = new Set();
+    tokenize(text).forEach(w => {
+      if (w === searchTermLower) return; // the search term itself isn't informative
+      if (seenInThisItem.has(w)) return; // count each item once per term, not per occurrence
+      seenInThisItem.add(w);
+      counts[w] = (counts[w] || 0) + 1;
+    });
+  });
+  return Object.entries(counts)
+    .filter(([, c]) => c >= 2) // only terms appearing in 2+ items are "recurring"
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+}
+
+function extractTopTags(items, limit) {
+  const counts = {};
+  items.forEach(it => {
+    field(it, 'System.Tags', '').split(';').map(t => t.trim()).filter(Boolean).forEach(tag => {
+      counts[tag] = (counts[tag] || 0) + 1;
+    });
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit);
+}
+
+function buildCreationTimeline(items) {
+  const withDates = items.map(it => field(it, 'System.CreatedDate')).filter(Boolean).map(d => new Date(d));
+  if (!withDates.length) return { labels: [], counts: [], spikeWeek: null, spikeCount: 0, avg: 0 };
+  withDates.sort((a, b) => a - b);
+  const earliest = withDates[0];
+  const weekBuckets = {};
+  withDates.forEach(d => {
+    const weeksSinceStart = Math.floor((d - earliest) / (7 * 86400000));
+    const weekStart = new Date(earliest.getTime() + weeksSinceStart * 7 * 86400000);
+    const key = weekStart.toISOString().slice(0, 10);
+    weekBuckets[key] = (weekBuckets[key] || 0) + 1;
+  });
+  const sortedWeeks = Object.keys(weekBuckets).sort();
+  const counts = sortedWeeks.map(k => weekBuckets[k]);
+  const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+  let spikeWeek = null, spikeCount = 0;
+  sortedWeeks.forEach((k, i) => {
+    if (counts[i] > spikeCount) { spikeCount = counts[i]; spikeWeek = k; }
+  });
+  const labels = sortedWeeks.map(k => new Date(k).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+  return { labels, counts, spikeWeek, spikeCount, avg };
+}
+
 function render(items, typeStateMap, clientField, envField, reopenedCount, searchTerm, searchNotes) {
   const openItems = items.filter(it => !isTerminal(typeStateMap, it));
   const bugItems = items.filter(it => field(it, 'System.WorkItemType') === 'Bug' && !isTerminal(typeStateMap, it));
@@ -491,6 +573,42 @@ function render(items, typeStateMap, clientField, envField, reopenedCount, searc
   if (bugItems.length >= 5) {
     insights.push({ sev: 'bad', text: `${bugItems.length} open bugs currently tied to "${searchTerm}" — a volume this size usually indicates a systemic issue (data, integration, or environment-specific) rather than independent defects.` });
   }
+
+  // ---- Deeper analysis: text themes + creation-date clustering across ALL
+  // bugs matching the search (any state), since historical pattern matters
+  // here more than just what's currently open ----
+  const allBugs = items.filter(it => field(it, 'System.WorkItemType') === 'Bug');
+  if (allBugs.length >= 3) {
+    document.getElementById('sec-deeper').style.display = 'block';
+
+    const topTerms = extractTopTerms(allBugs, searchTerm.toLowerCase(), 15);
+    document.getElementById('deeper-terms').innerHTML = topTerms.length
+      ? topTerms.map(([term, count]) => `<span class="badge">${term} (${count})</span>`).join('')
+      : '<div style="color:var(--muted);font-size:12px">No recurring terms found — titles/descriptions may be too varied, or too short, to cluster.</div>';
+
+    const topTags = extractTopTags(allBugs, 12);
+    document.getElementById('deeper-tags').innerHTML = topTags.length
+      ? topTags.map(([tag, count]) => `<span class="badge badge-warn">${tag} (${count})</span>`).join('')
+      : '<div style="color:var(--muted);font-size:12px">No tags found on these bugs.</div>';
+
+    const timeline = buildCreationTimeline(allBugs);
+    if (timeline.labels.length) {
+      renderBarChart('chart-timeline', timeline.labels, timeline.counts, '#c62828');
+    }
+
+    // Feed the strongest deeper-analysis findings back into the main insights list
+    if (topTerms.length && topTerms[0][1] / allBugs.length >= 0.4 && topTerms[0][1] >= 3) {
+      const [term, count] = topTerms[0];
+      insights.unshift({ sev: 'bad', text: `The word "<strong>${term}</strong>" appears in ${count} of ${allBugs.length} bugs (${(count/allBugs.length*100).toFixed(0)}%) — this is a strong signal of one shared root cause hiding behind what look like separate tickets, worth investigating directly rather than triaging each bug individually.` });
+    }
+    if (timeline.spikeCount >= 3 && timeline.avg > 0 && timeline.spikeCount / timeline.avg >= 2.5) {
+      const spikeDate = new Date(timeline.spikeWeek).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+      insights.unshift({ sev: 'bad', text: `${timeline.spikeCount} bugs were created in the week of <strong>${spikeDate}</strong> — more than ${(timeline.spikeCount/timeline.avg).toFixed(1)}x the average week. That kind of burst usually traces back to a single event (a release, a data migration, a config change) around that date, not ${timeline.spikeCount} coincidental bugs. Worth checking what shipped or changed right before then — including in Deployment Health below.` });
+    }
+  } else {
+    document.getElementById('sec-deeper').style.display = 'none';
+  }
+
   document.getElementById('sec-insights').style.display = 'block';
   document.getElementById('insights-list').innerHTML = insights.length
     ? insights.map(i => `<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--${i.sev});background:var(--${i.sev}-bg);border-radius:2px;font-size:13px">${i.text}</div>`).join('')
