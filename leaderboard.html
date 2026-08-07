@@ -392,12 +392,27 @@ async function runLeaderboard() {
         }).length;
         teamResult.verifiedCompletions = completedLastWeek;
 
-        // Backlog growth: items created this week minus items completed this
-        // week. Negative means the team burned down more than came in -
-        // that's the goal. Doesn't reward closing items without doing the work,
-        // since new work still has to outpace it for the number to look good.
-        const createdThisWeek = items.filter(it => new Date(field(it, 'System.CreatedDate')) >= thisWeekStart).length;
-        teamResult.backlogGrowth = createdThisWeek - teamResult.completedThisWeek;
+        // Sprint completion rate: what share of the sprint's committed items
+        // are actually in a Completed state right now.
+        if (items.length) {
+          const completedNow = items.filter(it => isCompleted(typeStateMap, it)).length;
+          teamResult.completionRatePct = (completedNow / items.length) * 100;
+        }
+
+        // Workload balance: spread between the busiest and quietest developer
+        // on the team (open items only) - a smaller gap means work is shared
+        // more evenly rather than one person quietly carrying the sprint.
+        const openForBalance = items.filter(it => !isTerminal(typeStateMap, it));
+        const perDev = {};
+        openForBalance.forEach(it => {
+          const dev = field(it, 'System.AssignedTo', '');
+          if (!dev) return; // unassigned items don't count toward any one person's load
+          perDev[dev] = (perDev[dev] || 0) + 1;
+        });
+        const devCounts = Object.values(perDev);
+        if (devCounts.length >= 2) {
+          teamResult.workloadSpread = Math.max(...devCounts) - Math.min(...devCounts);
+        }
 
         // No stale items: open items sitting more than the aging threshold
         const openItems = items.filter(it => !isTerminal(typeStateMap, it));
@@ -417,11 +432,9 @@ async function runLeaderboard() {
           teamResult.reopenedThisWeek = 0;
         }
 
-        // Response speed, discussion volume, and first-response time - all
-        // derived from ONE comment-fetch pass per item, to avoid tripling the
-        // number of API calls for three separate metrics.
+        // Response speed and discussion volume - derived from ONE comment-fetch
+        // pass per item, to avoid doubling the number of API calls.
         const respGaps = [];
-        const firstResponseGaps = [];
         let commentCountThisWeek = 0;
         const candidates = items.slice(0, COMMENT_CHECK_CAP_PER_TEAM);
         for (const it of candidates) {
@@ -433,12 +446,6 @@ async function runLeaderboard() {
             const assignedTo = field(it, 'System.AssignedTo', '');
 
             commentCountThisWeek += comments.filter(c => new Date(c.createdDate) >= thisWeekStart).length;
-
-            const createdDate = new Date(field(it, 'System.CreatedDate'));
-            if (createdDate >= thisWeekStart && comments.length) {
-              const gapDays = (new Date(comments[0].createdDate) - createdDate) / 86400000;
-              if (gapDays >= 0) firstResponseGaps.push(gapDays);
-            }
 
             for (let i = 0; i < comments.length - 1; i++) {
               const from = comments[i], to = comments[i + 1];
@@ -455,9 +462,6 @@ async function runLeaderboard() {
           } catch (e) { /* skip this item's comments, keep going */ }
         }
         teamResult.commentCountThisWeek = commentCountThisWeek;
-        if (firstResponseGaps.length) {
-          teamResult.avgFirstResponseDays = firstResponseGaps.reduce((a, b) => a + b, 0) / firstResponseGaps.length;
-        }
         if (respGaps.length) {
           teamResult.avgRespondDays = respGaps.reduce((a, b) => a + b, 0) / respGaps.length;
           teamResult.quickestRespondDays = Math.min(...respGaps);
@@ -520,10 +524,10 @@ function renderLeaderboard(results) {
       fmt: r => `${r.staleCount} stale` },
     { key: 'commentCountThisWeek', title: '💬 Most Active Discussion', desc: 'Most comments posted this week (real engagement, not just status flips)', higher: true,
       fmt: r => `${r.commentCountThisWeek} comments` },
-    { key: 'avgFirstResponseDays', title: '🚦 Fastest First Response', desc: 'Avg time from a new item being created to its first comment', higher: false,
-      fmt: r => r.avgFirstResponseDays < 1 ? `${(r.avgFirstResponseDays*24).toFixed(1)}h` : `${r.avgFirstResponseDays.toFixed(1)}d`, filter: r => r.avgFirstResponseDays !== undefined },
-    { key: 'backlogGrowth', title: '📉 Lowest Backlog Growth', desc: 'Items created minus items completed this week — negative means burning down faster than work comes in', higher: false,
-      fmt: r => `${r.backlogGrowth >= 0 ? '+' : ''}${r.backlogGrowth}` },
+    { key: 'completionRatePct', title: '🎯 Best Sprint Completion Rate', desc: 'Share of committed sprint items actually marked Completed', higher: true,
+      fmt: r => `${r.completionRatePct.toFixed(0)}%`, filter: r => r.completionRatePct !== undefined },
+    { key: 'workloadSpread', title: '⚖️ Most Balanced Workload', desc: 'Smallest gap between the busiest and quietest developer on the team', higher: false,
+      fmt: r => `spread: ${r.workloadSpread}`, filter: r => r.workloadSpread !== undefined },
   ];
 
   const points = {}; // team -> total points
