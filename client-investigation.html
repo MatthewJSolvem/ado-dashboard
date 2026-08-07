@@ -120,13 +120,13 @@
   </section>
 
   <div class="card" id="sec-builds">
-    <h2>Build Health</h2>
-    <div class="meta">Builds aren't named by client, so pick which pipeline(s) are relevant — nothing here is guessed.</div>
+    <h2>Deployment Health</h2>
+    <div class="meta">Release pipelines aren't named by client either — pick the specific environment(s) that are relevant (e.g. "George Payroll"). Each release pipeline can have multiple environments; nothing here is guessed.</div>
     <div id="pipeline-list" class="checkbox-list"></div>
-    <button type="button" style="margin-top:12px" onclick="loadBuildHealth()">Check Selected Pipelines</button>
+    <button type="button" style="margin-top:12px" onclick="loadBuildHealth()">Check Selected Environments</button>
     <div id="build-stats" class="grid" style="margin-top:16px"></div>
     <div class="table-wrap" style="margin-top:12px">
-      <table><thead><tr><th>Build</th><th>Pipeline</th><th>Result</th><th>Started</th></tr></thead>
+      <table><thead><tr><th>Release</th><th>Pipeline</th><th>Environment</th><th>Status</th><th>Started</th></tr></thead>
       <tbody id="rows-builds"></tbody></table>
     </div>
   </div>
@@ -328,23 +328,36 @@ async function runInvestigation() {
 
     setStatus('Searching...');
     const esc = searchTerm.replace(/'/g, "''");
-    let searchClause = `([System.Title] CONTAINS '${esc}' OR [System.Description] CONTAINS '${esc}' OR [System.Tags] CONTAINS '${esc}')`;
-    if (clientField) {
-      searchClause = `(${searchClause} OR [${clientField}] CONTAINS '${esc}')`;
-    }
+    const searchFields = ['System.Title', 'System.Tags'];
+    if (clientField) searchFields.push(clientField);
+    // Description is deliberately queried last and separately - it's a large
+    // HTML field and by far the most likely single cause of a query timeout,
+    // so if it times out the other (fast) field searches have already succeeded.
+    searchFields.push('System.Description');
+
     const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
                     'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.Tags'];
     if (clientField) fields.push(clientField);
     if (envField) fields.push(envField);
 
-    const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
-              WHERE [System.TeamProject] = '${project}'
-              AND ${searchClause}
-              ORDER BY [System.ChangedDate] DESC`, 'Client search');
-    const items = await getItems(base, result.workItems.map(w => w.id), fields);
+    const matchedIds = new Set();
+    const searchNotes = [];
+    for (const f of searchFields) {
+      setStatus(`Searching ${f.split('.').pop()}...`);
+      try {
+        const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND [${f}] CONTAINS '${esc}'
+                  ORDER BY [System.ChangedDate] DESC`, `Search: ${f}`);
+        result.workItems.forEach(w => matchedIds.add(w.id));
+      } catch (e) {
+        // One field timing out shouldn't sink the whole search - note it and keep going
+        searchNotes.push(`${f.split('.').pop()} search timed out or failed and was skipped (results may be incomplete for that field).`);
+      }
+    }
+    const items = await getItems(base, [...matchedIds], fields);
 
     // ---- reopen check: did any matched item go Completed -> active -> Completed again? ----
-    setStatus('Checking for reopened items...');
     const everClauseGroups = [];
     for (const [wit, states] of Object.entries(typeStateMap)) {
       Object.entries(states).filter(([, c]) => c === 'Completed').forEach(([s]) => {
@@ -354,16 +367,21 @@ async function runInvestigation() {
     const everClause = everClauseGroups.length ? `(${everClauseGroups.join(' OR ')})` : '(1=0)';
     let reopenedCount = 0;
     if (items.length) {
-      const idList = items.map(it => it.id).join(',');
-      const reopenResult = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
-                WHERE [System.TeamProject] = '${project}'
-                AND [System.Id] IN (${idList})
-                AND ${everClause}`, 'Reopen check');
-      const everCompletedIds = new Set(reopenResult.workItems.map(w => w.id));
-      reopenedCount = items.filter(it => everCompletedIds.has(it.id) && !isTerminal(typeStateMap, it)).length;
+      setStatus('Checking for reopened items...');
+      try {
+        const idList = items.map(it => it.id).join(',');
+        const reopenResult = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND [System.Id] IN (${idList})
+                  AND ${everClause}`, 'Reopen check');
+        const everCompletedIds = new Set(reopenResult.workItems.map(w => w.id));
+        reopenedCount = items.filter(it => everCompletedIds.has(it.id) && !isTerminal(typeStateMap, it)).length;
+      } catch (e) {
+        searchNotes.push('Reopen check timed out and was skipped — reopen count may read as 0 even if some items were reopened.');
+      }
     }
 
-    render(items, typeStateMap, clientField, envField, reopenedCount, searchTerm);
+    render(items, typeStateMap, clientField, envField, reopenedCount, searchTerm, searchNotes);
     setStatus('Done.');
   } catch (err) {
     if (err.message === 'CORS_OR_NETWORK') {
@@ -396,7 +414,7 @@ function rowsHtml(items, typeStateMap) {
   }).join('');
 }
 
-function render(items, typeStateMap, clientField, envField, reopenedCount, searchTerm) {
+function render(items, typeStateMap, clientField, envField, reopenedCount, searchTerm, searchNotes) {
   const openItems = items.filter(it => !isTerminal(typeStateMap, it));
   const bugItems = items.filter(it => field(it, 'System.WorkItemType') === 'Bug' && !isTerminal(typeStateMap, it));
   const blockedItems = openItems.filter(it => field(it, 'System.Tags', '').toLowerCase().includes('blocked'));
@@ -411,8 +429,12 @@ function render(items, typeStateMap, clientField, envField, reopenedCount, searc
   `;
 
   document.getElementById('sec-results').style.display = 'block';
-  document.getElementById('meta-results').textContent = `${items.length} item(s) mentioning "${searchTerm}"` +
+  let metaText = `${items.length} item(s) mentioning "${searchTerm}"` +
     (clientField ? '' : ' (no Client-like field found on any work item type — searched Title/Description/Tags only)');
+  if (searchNotes && searchNotes.length) {
+    metaText += ' — ' + searchNotes.join(' ');
+  }
+  document.getElementById('meta-results').textContent = metaText;
   document.getElementById('rows-results').innerHTML = rowsHtml(
     items.slice().sort((a, b) => new Date(field(b, 'System.ChangedDate')) - new Date(field(a, 'System.ChangedDate'))), typeStateMap
   );
@@ -475,65 +497,73 @@ function render(items, typeStateMap, clientField, envField, reopenedCount, searc
     : `<div style="color:var(--muted);font-size:13px">No strong pattern detected yet — may need more matching items, or the search term needs adjusting.</div>`;
 }
 
-// ---- Build health ----
-let pipelineDefinitions = [];
+// ---- Deployment health (Classic Release pipelines, on the separate
+// vsrm.dev.azure.com host - a different API entirely from Build pipelines) ----
+let releaseEnvironments = []; // flattened list: {defId, defName, envId, envName}
 async function loadPipelineList() {
   const org = document.getElementById('org').value.trim();
   const project = document.getElementById('project').value.trim();
   if (!org || !project) return;
-  const base = `https://dev.azure.com/${org}`;
+  const vsrmBase = `https://vsrm.dev.azure.com/${org}`;
   try {
-    const data = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/build/definitions?api-version=7.1`);
-    pipelineDefinitions = data.value || [];
-    document.getElementById('pipeline-list').innerHTML = pipelineDefinitions.map(p =>
-      `<label><input type="checkbox" value="${p.id}" class="pipeline-check"> ${p.name}</label>`
-    ).join('') || '<div style="color:var(--muted);font-size:12px">No pipelines found in this project.</div>';
+    const data = await adoGet(`${vsrmBase}/${encodeURIComponent(project)}/_apis/release/definitions?$expand=Environments&api-version=7.1`);
+    releaseEnvironments = [];
+    (data.value || []).forEach(def => {
+      (def.environments || []).forEach(env => {
+        releaseEnvironments.push({ defId: def.id, defName: def.name, envId: env.id, envName: env.name });
+      });
+    });
+    document.getElementById('pipeline-list').innerHTML = releaseEnvironments.map((e, i) =>
+      `<label><input type="checkbox" value="${i}" class="pipeline-check"> ${e.defName} — ${e.envName}</label>`
+    ).join('') || '<div style="color:var(--muted);font-size:12px">No release pipelines found in this project.</div>';
   } catch (e) {
-    document.getElementById('pipeline-list').innerHTML = '<div style="color:var(--muted);font-size:12px">Couldn\'t load pipeline list \u2014 check the PAT has Build (Read) scope.</div>';
+    document.getElementById('pipeline-list').innerHTML = '<div style="color:var(--muted);font-size:12px">Couldn\'t load release pipelines — check the PAT has Release (Read) scope.</div>';
   }
 }
 
 async function loadBuildHealth() {
   const org = document.getElementById('org').value.trim();
   const project = document.getElementById('project').value.trim();
-  const base = `https://dev.azure.com/${org}`;
-  const selected = [...document.querySelectorAll('.pipeline-check:checked')].map(cb => cb.value);
+  const vsrmBase = `https://vsrm.dev.azure.com/${org}`;
+  const selected = [...document.querySelectorAll('.pipeline-check:checked')].map(cb => releaseEnvironments[parseInt(cb.value, 10)]);
   if (!selected.length) {
-    document.getElementById('build-stats').innerHTML = '<div style="color:var(--muted);font-size:13px">Tick at least one pipeline above first.</div>';
+    document.getElementById('build-stats').innerHTML = '<div style="color:var(--muted);font-size:13px">Tick at least one environment above first.</div>';
     return;
   }
-  setStatus('Checking build health...');
-  let allBuilds = [];
-  for (const defId of selected) {
+  setStatus('Checking deployment health...');
+  let allDeployments = [];
+  for (const env of selected) {
     try {
-      const data = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/build/builds?definitions=${defId}&api-version=7.1&$top=30`);
-      allBuilds.push(...(data.value || []));
+      const data = await adoGet(`${vsrmBase}/${encodeURIComponent(project)}/_apis/release/deployments?definitionId=${env.defId}&definitionEnvironmentId=${env.envId}&api-version=7.1&$top=30&queryOrder=descending`);
+      (data.value || []).forEach(d => allDeployments.push({ ...d, _defName: env.defName, _envName: env.envName }));
     } catch (e) {}
   }
-  allBuilds.sort((a, b) => new Date(b.startTime || b.queueTime) - new Date(a.startTime || a.queueTime));
+  allDeployments.sort((a, b) => new Date(b.startedOn || b.completedOn) - new Date(a.startedOn || a.completedOn));
 
-  const succeeded = allBuilds.filter(b => b.result === 'succeeded').length;
-  const failed = allBuilds.filter(b => b.result === 'failed').length;
-  const partial = allBuilds.filter(b => b.result === 'partiallySucceeded').length;
-  const rate = allBuilds.length ? ((succeeded / allBuilds.length) * 100).toFixed(0) : '—';
+  const succeeded = allDeployments.filter(d => d.deploymentStatus === 'succeeded').length;
+  const failed = allDeployments.filter(d => d.deploymentStatus === 'failed').length;
+  const partial = allDeployments.filter(d => d.deploymentStatus === 'partiallySucceeded').length;
+  const rate = allDeployments.length ? ((succeeded / allDeployments.length) * 100).toFixed(0) : '—';
 
   document.getElementById('build-stats').innerHTML = `
-    <div class="stat"><div class="num" style="color:var(--good)">${rate}${allBuilds.length ? '%' : ''}</div><div class="label">Success rate</div></div>
+    <div class="stat"><div class="num" style="color:var(--good)">${rate}${allDeployments.length ? '%' : ''}</div><div class="label">Success rate</div></div>
     <div class="stat"><div class="num" style="color:var(--good)">${succeeded}</div><div class="label">Succeeded</div></div>
     <div class="stat"><div class="num" style="color:var(--bad)">${failed}</div><div class="label">Failed</div></div>
     <div class="stat"><div class="num" style="color:var(--warn)">${partial}</div><div class="label">Partial</div></div>
   `;
-  document.getElementById('rows-builds').innerHTML = allBuilds.length
-    ? allBuilds.slice(0, 30).map(b => {
-        const resultBadge = b.result === 'succeeded' ? 'badge-good' : (b.result === 'failed' ? 'badge-bad' : 'badge-warn');
-        const started = (b.startTime || b.queueTime || '').slice(0, 16).replace('T', ' ');
-        const link = b._links && b._links.web ? b._links.web.href : '#';
-        return `<tr><td><a href="${link}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${b.buildNumber}</a></td>
-          <td>${b.definition ? b.definition.name : ''}</td>
-          <td><span class="badge ${resultBadge}">${b.result || b.status}</span></td>
+  document.getElementById('rows-builds').innerHTML = allDeployments.length
+    ? allDeployments.slice(0, 30).map(d => {
+        const resultBadge = d.deploymentStatus === 'succeeded' ? 'badge-good' : (d.deploymentStatus === 'failed' ? 'badge-bad' : 'badge-warn');
+        const started = (d.startedOn || d.completedOn || '').slice(0, 16).replace('T', ' ');
+        const releaseName = d.release ? d.release.name : '';
+        const link = d.release && d.release._links && d.release._links.web ? d.release._links.web.href : '#';
+        return `<tr><td><a href="${link}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">${releaseName}</a></td>
+          <td>${d._defName}</td>
+          <td>${d._envName}</td>
+          <td><span class="badge ${resultBadge}">${d.deploymentStatus}</span></td>
           <td>${started}</td></tr>`;
       }).join('')
-    : '<tr><td colspan="4" class="empty">No builds found for the selected pipeline(s)</td></tr>';
+    : '<tr><td colspan="5" class="empty">No deployments found for the selected environment(s)</td></tr>';
   setStatus('Done.');
 }
 
