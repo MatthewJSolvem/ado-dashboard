@@ -82,6 +82,10 @@
          style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
         Client Investigation →
       </a>
+      <a href="leaderboard.html" target="_blank" rel="noopener"
+         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+        🏆 Leaderboard →
+      </a>
     </div>
   </div>
   <div class="subtitle">Runs entirely in your browser — nothing installed. Works the same whether opened locally or hosted (e.g. on GitHub Pages). Rows sitting more than 5 days in their current state are highlighted.</div>
@@ -191,7 +195,7 @@
   <section id="sec-comments">
     <h2>Recent comments — all open items</h2>
     <div class="meta" id="meta-comments">Every open, assigned item across the project — excludes Done/Closed/Removed. Checking comments needs one lookup per item, so this is capped to keep load times reasonable.</div>
-    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th><th>Needs Response From</th></tr></thead>
     <tbody id="rows-comments"></tbody></table></div>
   </section>
 
@@ -1156,14 +1160,16 @@ async function loadDashboard() {
           // Note: this endpoint is still "preview" even under the 7.1 API family -
           // plain api-version=7.1 is rejected, it must be 7.1-preview.4.
           const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1-preview.4`);
-          const comments = (cData.comments || []).filter(c => !c.isDeleted);
+          const comments = (cData.comments || []).filter(c =>
+            !c.isDeleted && !/^copied with all attachments and links from #/i.test((c.text || '').trim())
+          );
           if (!comments.length) continue;
           comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
           const last = comments[comments.length - 1];
           const lastAuthor = (last.createdBy && last.createdBy.displayName) || 'Unknown';
           const assignedTo = field(it, 'System.AssignedTo', 'Unassigned');
           const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
-          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered });
+          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered, assignedTo });
         } catch (e) {
           commentCheckFailures++;
         }
@@ -1344,7 +1350,8 @@ async function loadDashboard() {
         ? commentRows
             .sort((a, b) => (b.unanswered - a.unanswered) || (new Date(b.date) - new Date(a.date)))
             .map(r => {
-              const escText = (r.text || '').replace(/</g, '&lt;').slice(0, 140);
+              const plainText = (r.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+              const escText = plainText.replace(/</g, '&lt;').slice(0, 140);
               const age = daysAgo(r.date);
               const idLink = workItemBaseUrl
                 ? `<a href="${workItemBaseUrl}${r.item.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${r.item.id}</a>`
@@ -1352,9 +1359,10 @@ async function loadDashboard() {
               const statusBadge = r.unanswered
                 ? `<span class="badge badge-bad">Unanswered</span>`
                 : `<span class="badge badge-good">Responded</span>`;
-              return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${(r.text||'').length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td></tr>`;
+              const needsResponse = r.unanswered ? r.assignedTo : '—';
+              return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${plainText.length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td><td>${needsResponse}</td></tr>`;
             }).join('')
-        : '<tr><td colspan="6" class="empty">No comments found on open items</td></tr>';
+        : '<tr><td colspan="7" class="empty">No comments found on open items</td></tr>';
     }
 
     document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
