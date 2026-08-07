@@ -1144,6 +1144,7 @@ async function loadDashboard() {
     // One API call per item (no batch-across-items endpoint exists), so capped
     // to keep load times reasonable.
     let commentRows = [];
+    let commentCheckFailures = 0;
     const COMMENT_CHECK_CAP = 150;
     if (shown('comments')) {
       const candidates = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).slice(0, COMMENT_CHECK_CAP);
@@ -1152,7 +1153,9 @@ async function loadDashboard() {
         checked++;
         setStatus(`Checking comments (${checked}/${candidates.length})...`);
         try {
-          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1`);
+          // Note: this endpoint is still "preview" even under the 7.1 API family -
+          // plain api-version=7.1 is rejected, it must be 7.1-preview.4.
+          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1-preview.4`);
           const comments = (cData.comments || []).filter(c => !c.isDeleted);
           if (!comments.length) continue;
           comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
@@ -1162,7 +1165,7 @@ async function loadDashboard() {
           const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
           commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered });
         } catch (e) {
-          // skip items whose comments couldn't be fetched rather than aborting the whole load
+          commentCheckFailures++;
         }
       }
     }
@@ -1327,11 +1330,16 @@ async function loadDashboard() {
     if (shown('comments')) {
       const unansweredCount = commentRows.filter(r => r.unanswered).length;
       const eligibleCount = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).length;
+      const candidateCount = Math.min(eligibleCount, COMMENT_CHECK_CAP);
       const cappedNote = eligibleCount > COMMENT_CHECK_CAP
         ? ` Checked the first ${COMMENT_CHECK_CAP} of ${eligibleCount} eligible open items.`
         : '';
+      const failureNote = commentCheckFailures > 0
+        ? ` ⚠ ${commentCheckFailures} of ${candidateCount} comment lookups failed` +
+          (commentCheckFailures === candidateCount ? ' (all of them — likely an API or permissions issue, not "no comments").' : '.')
+        : '';
       document.getElementById('meta-comments').textContent =
-        `${commentRows.length} item(s) with comments, ${unansweredCount} awaiting a response from the assignee.${cappedNote}`;
+        `${commentRows.length} item(s) with comments, ${unansweredCount} awaiting a response from the assignee.${cappedNote}${failureNote}`;
       document.getElementById('rows-comments').innerHTML = commentRows.length
         ? commentRows
             .sort((a, b) => (b.unanswered - a.unanswered) || (new Date(b.date) - new Date(a.date)))
