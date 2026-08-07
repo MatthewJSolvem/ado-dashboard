@@ -41,17 +41,31 @@
   .roster-name { font-weight: 600; font-size: 13px; padding-top: 8px; }
 
   /* ---- Champion banner ---- */
-  #champion { display: none; text-align: center; padding: 36px 20px; border-radius: 12px;
+  #champion { display: none; position: relative; overflow: hidden; text-align: center; padding: 44px 20px 32px;
+              border-radius: 14px;
               background: linear-gradient(135deg, #f5b700 0%, #f79300 50%, #f5b700 100%);
               background-size: 200% 200%; animation: shimmer 4s ease infinite;
-              box-shadow: 0 8px 24px rgba(245,183,0,0.4); margin-bottom: 24px; }
+              box-shadow: 0 10px 30px rgba(245,183,0,0.5); margin-bottom: 20px; }
   @keyframes shimmer { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-  #champion .trophy { font-size: 48px; margin-bottom: 8px; }
-  #champion .photo { width: 96px; height: 96px; border-radius: 50%; object-fit: cover;
-                      border: 4px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 10px; }
-  #champion .team-name { font-size: 24px; font-weight: 800; color: #1a1a2e; }
-  #champion .manager-name { font-size: 15px; color: #3d2b00; margin-top: 2px; }
-  #champion .points { font-size: 13px; color: #3d2b00; margin-top: 8px; font-weight: 600; }
+  #champion .confetti { position: absolute; top: -10px; font-size: 20px; opacity: 0.85; animation: fall 3.5s linear infinite; }
+  @keyframes fall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0.9; } 100% { transform: translateY(340px) rotate(360deg); opacity: 0; } }
+  #champion .label { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+                      color: #6b4a00; margin-bottom: 6px; }
+  #champion .trophy { font-size: 60px; margin-bottom: 6px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25)); }
+  #champion .photo { width: 112px; height: 112px; border-radius: 50%; object-fit: cover;
+                      border: 5px solid #fff; box-shadow: 0 6px 16px rgba(0,0,0,0.35); margin-bottom: 12px; }
+  #champion .team-name { font-size: 30px; font-weight: 800; color: #1a1a2e; }
+  #champion .manager-name { font-size: 16px; color: #3d2b00; margin-top: 2px; }
+  #champion .points { font-size: 22px; color: #1a1a2e; margin-top: 14px; font-weight: 800;
+                       background: rgba(255,255,255,0.4); display: inline-block; padding: 6px 20px; border-radius: 20px; }
+  .runners-up { display: flex; justify-content: center; gap: 16px; margin-top: 24px; flex-wrap: wrap; }
+  .runner-card { background: rgba(255,255,255,0.55); border-radius: 10px; padding: 14px 18px; min-width: 150px; }
+  .runner-card .medal { font-size: 20px; }
+  .runner-card .photo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin: 6px 0;
+                         border: 2px solid #fff; }
+  .runner-card .name { font-size: 13px; font-weight: 700; color: #1a1a2e; }
+  .runner-card .mgr { font-size: 11px; color: #5a3f00; }
+  .runner-card .pts { font-size: 13px; font-weight: 700; color: #1a1a2e; margin-top: 4px; }
 
   /* ---- Podiums ---- */
   .podium-card { background: var(--card); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
@@ -121,11 +135,20 @@
   </div>
 
   <div id="champion">
+    <span class="confetti" style="left:8%;animation-delay:0s">🎉</span>
+    <span class="confetti" style="left:20%;animation-delay:0.6s">✨</span>
+    <span class="confetti" style="left:35%;animation-delay:1.2s">🎊</span>
+    <span class="confetti" style="left:50%;animation-delay:0.3s">✨</span>
+    <span class="confetti" style="left:65%;animation-delay:1.6s">🎉</span>
+    <span class="confetti" style="left:80%;animation-delay:0.9s">🎊</span>
+    <span class="confetti" style="left:92%;animation-delay:1.4s">✨</span>
+    <div class="label">Champion of the Week</div>
     <div class="trophy">🏆</div>
     <img id="champion-photo" class="photo" src="" alt="">
     <div class="team-name" id="champion-team"></div>
     <div class="manager-name" id="champion-manager"></div>
     <div class="points" id="champion-points"></div>
+    <div class="runners-up" id="runners-up"></div>
   </div>
 
   <div id="podiums"></div>
@@ -350,17 +373,31 @@ async function runLeaderboard() {
                   WHERE [System.TeamProject] = '${project}' AND [System.IterationPath] = '${iterPath}'`, `${team.name} sprint items`);
         const items = await getItems(base, itemsResult.workItems.map(w => w.id), fields);
 
-        // Most tickets completed this week
+        // Most tickets completed this week (kept internally as an input to
+        // Backlog Growth below - not shown as its own podium, since a raw
+        // "count of Done clicks" is too easy to fake)
         teamResult.completedThisWeek = items.filter(it =>
           isCompleted(typeStateMap, it) && new Date(field(it, 'System.ChangedDate')) >= thisWeekStart
         ).length;
 
-        // Most improved: this week vs last week (same sprint scope)
+        // Verified completions: items completed LAST week that are STILL
+        // completed now (ChangedDate hasn't moved since, current state is
+        // still Completed). If a completion was false or premature, it
+        // typically gets reopened - which would show as a more recent
+        // ChangedDate and/or a non-Completed current state, dropping it out
+        // of this count. Harder to game than a raw "marked Done" tally.
         const completedLastWeek = items.filter(it => {
           const d = new Date(field(it, 'System.ChangedDate'));
           return isCompleted(typeStateMap, it) && d >= lastWeekStart && d < thisWeekStart;
         }).length;
-        teamResult.improvement = teamResult.completedThisWeek - completedLastWeek;
+        teamResult.verifiedCompletions = completedLastWeek;
+
+        // Backlog growth: items created this week minus items completed this
+        // week. Negative means the team burned down more than came in -
+        // that's the goal. Doesn't reward closing items without doing the work,
+        // since new work still has to outpace it for the number to look good.
+        const createdThisWeek = items.filter(it => new Date(field(it, 'System.CreatedDate')) >= thisWeekStart).length;
+        teamResult.backlogGrowth = createdThisWeek - teamResult.completedThisWeek;
 
         // No stale items: open items sitting more than the aging threshold
         const openItems = items.filter(it => !isTerminal(typeStateMap, it));
@@ -380,8 +417,12 @@ async function runLeaderboard() {
           teamResult.reopenedThisWeek = 0;
         }
 
-        // Response speed: check comments on a capped subset of this sprint's items
+        // Response speed, discussion volume, and first-response time - all
+        // derived from ONE comment-fetch pass per item, to avoid tripling the
+        // number of API calls for three separate metrics.
         const respGaps = [];
+        const firstResponseGaps = [];
+        let commentCountThisWeek = 0;
         const candidates = items.slice(0, COMMENT_CHECK_CAP_PER_TEAM);
         for (const it of candidates) {
           try {
@@ -390,6 +431,15 @@ async function runLeaderboard() {
               .filter(c => !c.isDeleted && !/^copied with all attachments and links from #/i.test((c.text || '').trim()))
               .sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
             const assignedTo = field(it, 'System.AssignedTo', '');
+
+            commentCountThisWeek += comments.filter(c => new Date(c.createdDate) >= thisWeekStart).length;
+
+            const createdDate = new Date(field(it, 'System.CreatedDate'));
+            if (createdDate >= thisWeekStart && comments.length) {
+              const gapDays = (new Date(comments[0].createdDate) - createdDate) / 86400000;
+              if (gapDays >= 0) firstResponseGaps.push(gapDays);
+            }
+
             for (let i = 0; i < comments.length - 1; i++) {
               const from = comments[i], to = comments[i + 1];
               const fromAuthor = (from.createdBy && from.createdBy.displayName) || '';
@@ -403,6 +453,10 @@ async function runLeaderboard() {
               }
             }
           } catch (e) { /* skip this item's comments, keep going */ }
+        }
+        teamResult.commentCountThisWeek = commentCountThisWeek;
+        if (firstResponseGaps.length) {
+          teamResult.avgFirstResponseDays = firstResponseGaps.reduce((a, b) => a + b, 0) / firstResponseGaps.length;
         }
         if (respGaps.length) {
           teamResult.avgRespondDays = respGaps.reduce((a, b) => a + b, 0) / respGaps.length;
@@ -454,18 +508,22 @@ function renderLeaderboard(results) {
   const withSprint = results.filter(r => r.hasSprint && !r.error);
 
   const podiumDefs = [
-    { key: 'completedThisWeek', title: '🎯 Most Tickets Completed', desc: 'Items completed since Monday', higher: true,
-      fmt: r => `${r.completedThisWeek} completed` },
+    { key: 'verifiedCompletions', title: '✅ Verified Completions', desc: "Last week's completions that are still closed today — didn't bounce back", higher: true,
+      fmt: r => `${r.verifiedCompletions} stuck` },
     { key: 'avgRespondDays', title: '⚡ Quickest Avg Days to Respond', desc: `Average time to reply this week (first ${40} items checked per team)`, higher: false,
       fmt: r => `${r.avgRespondDays.toFixed(1)}d avg`, filter: r => r.avgRespondDays !== undefined },
     { key: 'quickestRespondDays', title: '🚀 Quickest Responder', desc: 'Single fastest reply this week', higher: false,
       fmt: r => r.quickestRespondDays < 1 ? `${(r.quickestRespondDays*24).toFixed(1)}h` : `${r.quickestRespondDays.toFixed(1)}d`, filter: r => r.quickestRespondDays !== undefined },
     { key: 'reopenedThisWeek', title: '✨ Cleanest Sprint', desc: 'Fewest items reopened this week', higher: false,
       fmt: r => `${r.reopenedThisWeek} reopened`, filter: r => r.reopenedThisWeek !== null && r.reopenedThisWeek !== undefined },
-    { key: 'improvement', title: '📈 Most Improved', desc: 'Biggest jump in completions vs last week', higher: true,
-      fmt: r => `${r.improvement >= 0 ? '+' : ''}${r.improvement}` },
     { key: 'staleCount', title: '🧹 No Stale Items', desc: 'Fewest items sitting 5+ days untouched', higher: false,
       fmt: r => `${r.staleCount} stale` },
+    { key: 'commentCountThisWeek', title: '💬 Most Active Discussion', desc: 'Most comments posted this week (real engagement, not just status flips)', higher: true,
+      fmt: r => `${r.commentCountThisWeek} comments` },
+    { key: 'avgFirstResponseDays', title: '🚦 Fastest First Response', desc: 'Avg time from a new item being created to its first comment', higher: false,
+      fmt: r => r.avgFirstResponseDays < 1 ? `${(r.avgFirstResponseDays*24).toFixed(1)}h` : `${r.avgFirstResponseDays.toFixed(1)}d`, filter: r => r.avgFirstResponseDays !== undefined },
+    { key: 'backlogGrowth', title: '📉 Lowest Backlog Growth', desc: 'Items created minus items completed this week — negative means burning down faster than work comes in', higher: false,
+      fmt: r => `${r.backlogGrowth >= 0 ? '+' : ''}${r.backlogGrowth}` },
   ];
 
   const points = {}; // team -> total points
@@ -489,7 +547,18 @@ function renderLeaderboard(results) {
     document.getElementById('champion-photo').src = photoFor(champTeam);
     document.getElementById('champion-team').textContent = champTeam;
     document.getElementById('champion-manager').textContent = managerFor(champTeam);
-    document.getElementById('champion-points').textContent = `${champPoints} point(s) this week`;
+    document.getElementById('champion-points').textContent = `${champPoints} point${champPoints === 1 ? '' : 's'} this week`;
+
+    const runnerMedals = ['🥈', '🥉'];
+    const runnersHtml = standings.slice(1, 3).filter(([, pts]) => pts > 0).map(([team, pts], i) => `
+      <div class="runner-card">
+        <div class="medal">${runnerMedals[i]}</div>
+        <img class="photo" src="${photoFor(team)}" alt="">
+        <div class="name">${team}</div>
+        <div class="mgr">${managerFor(team)}</div>
+        <div class="pts">${pts} point${pts === 1 ? '' : 's'}</div>
+      </div>`).join('');
+    document.getElementById('runners-up').innerHTML = runnersHtml;
   } else {
     document.getElementById('champion').style.display = 'none';
   }
