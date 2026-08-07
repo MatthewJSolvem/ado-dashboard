@@ -116,7 +116,7 @@
         <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
         <label><input type="checkbox" id="show-completionTrend" checked onchange="saveSectionPrefs()"> Completion trend chart</label>
         <label><input type="checkbox" id="show-backlogAge" checked onchange="saveSectionPrefs()"> Backlog age chart</label>
-        <label><input type="checkbox" id="show-comments" checked onchange="saveSectionPrefs()"> Recent comments (current sprint)</label>
+        <label><input type="checkbox" id="show-comments" checked onchange="saveSectionPrefs()"> Recent comments (project-wide, open items)</label>
       </div>
     </div>
 
@@ -183,8 +183,8 @@
   </section>
 
   <section id="sec-comments">
-    <h2>Recent comments — current sprint</h2>
-    <div class="meta" id="meta-comments">Scoped to this sprint since checking comments needs one lookup per item — keeps this fast rather than scanning the whole project.</div>
+    <h2>Recent comments — all open items</h2>
+    <div class="meta" id="meta-comments">Every open, assigned item across the project — excludes Done/Closed/Removed. Checking comments needs one lookup per item, so this is capped to keep load times reasonable.</div>
     <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th></tr></thead>
     <tbody id="rows-comments"></tbody></table></div>
   </section>
@@ -907,7 +907,7 @@ function renderInsights(d) {
       const stalestAge = daysAgo(stalest.date);
       insights.push({
         severity: unanswered.length >= 3 ? 'bad' : 'warn',
-        text: `${unanswered.length} comment(s) in the current sprint are awaiting a response from the assignee.` +
+        text: `${unanswered.length} comment(s) across open items are awaiting a response from the assignee.` +
           (stalestAge !== null ? ` The oldest has been sitting <strong>${stalestAge} day(s)</strong> (item #${stalest.item.id}).` : ''),
       });
     }
@@ -1107,30 +1107,6 @@ async function loadDashboard() {
       sprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
     }
 
-    // ---- recent comments (current sprint only - one API call per item, no
-    // batch-across-items endpoint exists for work item comments) ----
-    let commentRows = [];
-    if (shown('comments') && sprintItems.length) {
-      let checked = 0;
-      for (const it of sprintItems) {
-        checked++;
-        setStatus(`Checking comments (${checked}/${sprintItems.length})...`);
-        try {
-          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1`);
-          const comments = (cData.comments || []).filter(c => !c.isDeleted);
-          if (!comments.length) continue;
-          comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
-          const last = comments[comments.length - 1];
-          const lastAuthor = (last.createdBy && last.createdBy.displayName) || 'Unknown';
-          const assignedTo = field(it, 'System.AssignedTo', 'Unassigned');
-          const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
-          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered });
-        } catch (e) {
-          // skip items whose comments couldn't be fetched rather than aborting the whole load
-        }
-      }
-    }
-
     let carryoverItems = [];
     if (previousIter) {
       setStatus('Fetching previous sprint carry-over...');
@@ -1154,6 +1130,36 @@ async function loadDashboard() {
     const workloadWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
               AND [System.AssignedTo] <> '' AND NOT ${removedOrCompleted}`, 'Workload by developer');
     const workloadItems = await getItems(base, workloadWiql.workItems.map(w => w.id), fields);
+
+    // ---- recent comments, project-wide (not limited to current sprint or one
+    // team) - reuses workloadItems since that's already every open, assigned,
+    // non-terminal item across the project. Explicitly double-checks terminal
+    // state too, since comments on Done/Closed/Removed items aren't relevant.
+    // One API call per item (no batch-across-items endpoint exists), so capped
+    // to keep load times reasonable.
+    let commentRows = [];
+    const COMMENT_CHECK_CAP = 150;
+    if (shown('comments')) {
+      const candidates = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).slice(0, COMMENT_CHECK_CAP);
+      let checked = 0;
+      for (const it of candidates) {
+        checked++;
+        setStatus(`Checking comments (${checked}/${candidates.length})...`);
+        try {
+          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1`);
+          const comments = (cData.comments || []).filter(c => !c.isDeleted);
+          if (!comments.length) continue;
+          comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
+          const last = comments[comments.length - 1];
+          const lastAuthor = (last.createdBy && last.createdBy.displayName) || 'Unknown';
+          const assignedTo = field(it, 'System.AssignedTo', 'Unassigned');
+          const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
+          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered });
+        } catch (e) {
+          // skip items whose comments couldn't be fetched rather than aborting the whole load
+        }
+      }
+    }
 
     setStatus('Fetching area path breakdown...');
     const areaWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
@@ -1314,8 +1320,12 @@ async function loadDashboard() {
     document.getElementById('sec-comments').style.display = shown('comments') ? 'block' : 'none';
     if (shown('comments')) {
       const unansweredCount = commentRows.filter(r => r.unanswered).length;
+      const eligibleCount = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).length;
+      const cappedNote = eligibleCount > COMMENT_CHECK_CAP
+        ? ` Checked the first ${COMMENT_CHECK_CAP} of ${eligibleCount} eligible open items.`
+        : '';
       document.getElementById('meta-comments').textContent =
-        `${commentRows.length} item(s) with comments in this sprint, ${unansweredCount} awaiting a response from the assignee.`;
+        `${commentRows.length} item(s) with comments, ${unansweredCount} awaiting a response from the assignee.${cappedNote}`;
       document.getElementById('rows-comments').innerHTML = commentRows.length
         ? commentRows
             .sort((a, b) => (b.unanswered - a.unanswered) || (new Date(b.date) - new Date(a.date)))
@@ -1330,7 +1340,7 @@ async function loadDashboard() {
                 : `<span class="badge badge-good">Responded</span>`;
               return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${(r.text||'').length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td></tr>`;
             }).join('')
-        : '<tr><td colspan="6" class="empty">No comments found on current sprint items</td></tr>';
+        : '<tr><td colspan="6" class="empty">No comments found on open items</td></tr>';
     }
 
     document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
