@@ -375,7 +375,7 @@ async function runLeaderboard() {
     const thisWeekStart = new Date(now.getTime() - daysSinceMonday * 86400000);
     const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86400000);
     const AGING_THRESHOLD_DAYS = 5;
-    const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate'];
+    const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate'];
     const COMMENT_CHECK_CAP_PER_TEAM = 40;
 
     const results = [];
@@ -390,6 +390,8 @@ async function runLeaderboard() {
         const iterPath = iterData.value[0].path;
         teamResult.hasSprint = true;
         teamResult.sprintName = iterData.value[0].name;
+        const iterStartDate = iterData.value[0].attributes && iterData.value[0].attributes.startDate
+          ? new Date(iterData.value[0].attributes.startDate) : null;
 
         const itemsResult = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                   WHERE [System.TeamProject] = '${project}' AND [System.IterationPath] = '${iterPath}'`, `${team.name} sprint items`);
@@ -419,6 +421,20 @@ async function runLeaderboard() {
         if (items.length) {
           const completedNow = items.filter(it => isCompleted(typeStateMap, it)).length;
           teamResult.completionRatePct = (completedNow / items.length) * 100;
+        }
+
+        // Above and beyond: items completed this week that were created AFTER
+        // the sprint started - i.e. work that wasn't part of the original plan
+        // but got pulled in and finished anyway. (This can only detect newly-
+        // created unplanned work via CreatedDate - it can't tell if an older
+        // backlog item was pulled into the sprint mid-week, since ADO doesn't
+        // expose an "added to iteration" date through this API.)
+        if (iterStartDate) {
+          teamResult.aboveAndBeyond = items.filter(it =>
+            isCompleted(typeStateMap, it) &&
+            new Date(field(it, 'System.ChangedDate')) >= thisWeekStart &&
+            new Date(field(it, 'System.CreatedDate')) > iterStartDate
+          ).length;
         }
 
         // Workload balance: spread between the busiest and quietest developer
@@ -550,6 +566,8 @@ function renderLeaderboard(results) {
       fmt: r => `${r.completionRatePct.toFixed(0)}%`, filter: r => r.completionRatePct !== undefined },
     { key: 'workloadSpread', title: '⚖️ Most Balanced Workload', desc: 'Smallest gap between the busiest and quietest developer on the team', higher: false,
       fmt: r => `spread: ${r.workloadSpread}`, filter: r => r.workloadSpread !== undefined },
+    { key: 'aboveAndBeyond', title: '🌟 Above and Beyond', desc: "Unplanned work that came in mid-sprint and got completed anyway, on top of the original plan", higher: true,
+      fmt: r => `${r.aboveAndBeyond} extra`, filter: r => r.aboveAndBeyond !== undefined },
   ];
 
   const points = {}; // team -> total points
