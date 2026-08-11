@@ -67,6 +67,12 @@
   .section-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
   .section-toggles label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text);
                             text-transform: none; font-weight: 400; }
+  @media print {
+    body.printing-comments-only > *:not(#sec-comments) { display: none !important; }
+    body.printing-comments-only #print-comments-header { display: block !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    section { box-shadow: none !important; border: 1px solid #ddd; }
+  }
 </style>
 </head>
 <body>
@@ -193,8 +199,21 @@
   </section>
 
   <section id="sec-comments">
-    <h2>Recent comments — all open items</h2>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>Recent comments — all open items</h2>
+      <button type="button" onclick="exportComments()" style="padding:7px 12px;font-size:11px">📄 Export</button>
+    </div>
+    <div id="print-comments-header" style="display:none">
+      <h1 style="margin-bottom:2px">Unanswered Comments Report</h1>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:16px" id="print-comments-date"></div>
+    </div>
     <div class="meta" id="meta-comments">Every open, assigned item across the project — excludes Done/Closed/Removed. Checking comments needs one lookup per item, so this is capped to keep load times reasonable.</div>
+
+    <h3 style="font-size:13px;margin:18px 0 8px 0">Summary by area — who needs to respond</h3>
+    <div class="table-wrap"><table><thead><tr><th>Area Path</th><th>Unanswered</th><th>Needs Response From</th></tr></thead>
+    <tbody id="rows-comments-area-summary"></tbody></table></div>
+
+    <h3 style="font-size:13px;margin:18px 0 8px 0">All items</h3>
     <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th><th>Needs Response From</th></tr></thead>
     <tbody id="rows-comments"></tbody></table></div>
   </section>
@@ -392,6 +411,16 @@ restoreSectionPrefs();
 restoreExcludeAssignees();
 
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function exportComments() {
+  const dateStr = new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('print-comments-date').textContent = `Generated ${dateStr}`;
+  document.body.classList.add('printing-comments-only');
+  window.print();
+}
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('printing-comments-only');
+});
 
 function showError(html) {
   const el = document.getElementById('error');
@@ -1363,6 +1392,20 @@ async function loadDashboard() {
               return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${plainText.length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td><td>${needsResponse}</td></tr>`;
             }).join('')
         : '<tr><td colspan="7" class="empty">No comments found on open items</td></tr>';
+
+      const areaSummary = {};
+      commentRows.filter(r => r.unanswered).forEach(r => {
+        const area = field(r.item, 'System.AreaPath', '(no area path)');
+        if (!areaSummary[area]) areaSummary[area] = { count: 0, people: new Set() };
+        areaSummary[area].count++;
+        if (r.assignedTo) areaSummary[area].people.add(r.assignedTo);
+      });
+      const areaRows = Object.entries(areaSummary).sort((a, b) => b[1].count - a[1].count);
+      document.getElementById('rows-comments-area-summary').innerHTML = areaRows.length
+        ? areaRows.map(([area, d]) =>
+            `<tr><td>${area}</td><td>${d.count}</td><td>${[...d.people].join(', ') || '—'}</td></tr>`
+          ).join('')
+        : '<tr><td colspan="3" class="empty">No unanswered comments right now</td></tr>';
     }
 
     document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
