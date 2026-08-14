@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Master Tracker Review</title>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .config .field { display: flex; flex-direction: column; gap: 4px; }
+  .config label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .config input, .config select { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+                  color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  .config input:focus, .config select:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .config .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .config .full { grid-column: 1 / -1; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 8px 10px; font-size: 12px; }
+  .checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge-new { background: var(--accent); color: #fff; }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .age-green { color: var(--good); font-weight: 700; }
+  .age-amber { color: var(--warn); font-weight: 700; }
+  .age-red { color: var(--bad); font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+    <h1>Master Tracker Review</h1>
+    <div style="display:flex;gap:16px">
+      <a href="index.html" target="_blank" rel="noopener"
+         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+        ← Back to Dashboard
+      </a>
+      <a href="weekly-team-report.html" target="_blank" rel="noopener"
+         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+        Weekly Team Report →
+      </a>
+      <a href="client-investigation.html" target="_blank" rel="noopener"
+         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+        Client Investigation →
+      </a>
+      <a href="leaderboard.html" target="_blank" rel="noopener"
+         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
+        🏆 Leaderboard →
+      </a>
+    </div>
+  </div>
+  <div class="subtitle">Master Trackers where every child item is done, but the tracker itself hasn't been moved to Ready for Review or Closed yet. Sorted oldest first (by creation date).</div>
+
+  <div class="config">
+    <div class="field"><label>Saved Profile</label>
+      <select id="profileSelect" onchange="applyProfile(this.value)"><option value="">-- New / unsaved --</option></select>
+    </div>
+    <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
+    <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
+    <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
+
+    <div class="field full">
+      <label>Exclude states from "needing attention" (comma-separated — trackers already in these states are considered handled)</label>
+      <input id="excludeStates" value="Ready for Review, Closed">
+    </div>
+
+    <div class="actions">
+      <button id="loadBtn" onclick="loadReview()">Load Review</button>
+      <label class="checkbox"><input type="checkbox" id="remember"> Remember org/project on this device (not the token)</label>
+      <label class="checkbox"><input type="checkbox" id="hideRecent" onchange="rerender()"> Hide trackers touched in the last <input id="recentHours" type="number" value="4" min="0" style="width:44px;padding:2px 4px;margin:0 4px"> hours</label>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="error"></div>
+
+  <div id="stats" class="grid" style="display:none"></div>
+
+  <section id="sec-attention" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>Needing attention</h2>
+      <button type="button" class="small" onclick="copyList()">Copy list</button>
+    </div>
+    <div class="meta" id="meta-attention"></div>
+    <div class="table-wrap"><table><thead><tr>
+      <th></th><th>ID</th><th>Title</th><th>State</th><th>Children</th>
+      <th>Created</th><th>Age (d)</th><th>Ready since</th><th>Days since ready</th>
+    </tr></thead>
+    <tbody id="rows-attention"></tbody></table></div>
+    <span id="copy-status" style="font-size:12px;color:var(--muted);margin-left:4px"></span>
+  </section>
+
+  <section id="sec-near" style="display:none">
+    <h2>Nearly there</h2>
+    <div class="meta" id="meta-near">Master Trackers with exactly one child still open — what's about to land next.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>State</th><th>Children</th><th>Still open</th><th>Created</th><th>Age (d)</th>
+    </tr></thead>
+    <tbody id="rows-near"></tbody></table></div>
+  </section>
+
+<script>
+let workItemBaseUrl = '';
+let lastResults = []; // needing-attention rows, kept for copyList()
+
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+// Reuses the same config/profile storage keys as the main dashboard, so
+// org/project/PAT don't need to be re-typed if you already used that page.
+function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (!raw) return;
+  try {
+    const cfg = JSON.parse(raw);
+    document.getElementById('org').value = cfg.org || '';
+    document.getElementById('project').value = cfg.project || '';
+    document.getElementById('remember').checked = true;
+  } catch (e) {}
+}
+let profiles = {};
+function loadProfiles() {
+  const raw = storage.get('ado-profiles');
+  try { profiles = raw ? JSON.parse(raw) : {}; } catch (e) { profiles = {}; }
+  const sel = document.getElementById('profileSelect');
+  sel.innerHTML = '<option value="">-- New / unsaved --</option>' +
+    Object.keys(profiles).sort().map(n => `<option value="${n}">${n}</option>`).join('');
+}
+function applyProfile(name) {
+  if (!name || !profiles[name]) return;
+  const p = profiles[name];
+  document.getElementById('org').value = p.org || '';
+  document.getElementById('project').value = p.project || '';
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function showError(html) { const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.wiqlLabel = label; err.wiqlQuery = queryText; } throw err; }
+}
+function field(item, name, def = '') {
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+
+// Same literal-state belt-and-suspenders approach as the main dashboard,
+// since ADO's own state-category metadata has been wrong before (e.g. Bug's
+// "Closed" state wasn't tagged Completed).
+const LITERAL_COMPLETED_STATES = ['Closed', 'Done'];
+function isCompletedState(childState, childType, typeStateMap) {
+  if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(childState.toLowerCase())) return true;
+  return (typeStateMap[childType] || {})[childState] === 'Completed';
+}
+
+function ageClass(days) {
+  if (days == null) return '';
+  if (days < 7) return 'age-green';
+  if (days <= 21) return 'age-amber';
+  return 'age-red';
+}
+
+function rerender() {
+  if (!lastResults.length && !lastResults._loaded) return;
+  renderAttention(lastResults);
+}
+
+async function loadReview() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const remember = document.getElementById('remember').checked;
+  const excludeStates = document.getElementById('excludeStates').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!org || !project || !pat) { showError('Fill in organization, project, and PAT first.'); return; }
+  if (remember) {
+    const existing = JSON.parse(storage.get('ado-config') || '{}');
+    storage.set('ado-config', JSON.stringify({ ...existing, org, project }));
+  }
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    if (!witTypes.includes('Master Tracker')) {
+      showError('This project has no "Master Tracker" work item type — check the project name is correct.');
+      setStatus(''); btn.disabled = false; return;
+    }
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+
+    const excludeClause = excludeStates.length
+      ? `AND NOT [Source].[System.State] IN (${excludeStates.map(s => `'${s.replace(/'/g, "''")}'`).join(',')})`
+      : '';
+
+    setStatus('Fetching Master Tracker hierarchy...');
+    const linkWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItemLinks
+              WHERE [Source].[System.TeamProject] = '${project}'
+              AND [Source].[System.WorkItemType] = 'Master Tracker'
+              ${excludeClause}
+              AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'
+              MODE (MustContain)`, 'Master Tracker hierarchy');
+
+    const parentToChildren = {};
+    const parentIds = new Set();
+    (linkWiql.workItemRelations || []).forEach(rel => {
+      if (rel.rel === 'System.LinkTypes.Hierarchy-Forward' && rel.source && rel.target) {
+        const pid = rel.source.id, cid = rel.target.id;
+        parentIds.add(pid);
+        (parentToChildren[pid] = parentToChildren[pid] || []).push(cid);
+      }
+    });
+
+    if (!parentIds.size) {
+      lastResults = []; lastResults._loaded = true;
+      document.getElementById('stats').style.display = 'none';
+      document.getElementById('sec-attention').style.display = 'block';
+      document.getElementById('meta-attention').textContent = '0 Master Tracker(s) needing attention';
+      document.getElementById('rows-attention').innerHTML = '<tr><td colspan="9" class="empty">No open Master Trackers with children found</td></tr>';
+      document.getElementById('sec-near').style.display = 'none';
+      setStatus('Done.'); btn.disabled = false;
+      return;
+    }
+
+    setStatus('Fetching trackers and children...');
+    const allChildIds = [...new Set(Object.values(parentToChildren).flat())];
+    const [trackers, children] = await Promise.all([
+      getItems(base, [...parentIds], ['System.Id','System.Title','System.State','System.CreatedDate','System.ChangedDate']),
+      getItems(base, allChildIds, ['System.Id','System.WorkItemType','System.State','System.ChangedDate']),
+    ]);
+    const childById = Object.fromEntries(children.map(c => [c.id, c]));
+
+    const prevSeenRaw = storage.get('mt-review-seen');
+    let prevSeen = [];
+    try { prevSeen = prevSeenRaw ? JSON.parse(prevSeenRaw) : []; } catch (e) {}
+    const prevSeenSet = new Set(prevSeen);
+
+    const attention = [];
+    const nearlyThere = [];
+    trackers.forEach(tr => {
+      const childIds = parentToChildren[tr.id] || [];
+      const childItems = childIds.map(id => childById[id]).filter(Boolean);
+      if (!childItems.length) return; // guard: no children yet, nothing to evaluate
+      const openChildren = childItems.filter(c => !isCompletedState(field(c, 'System.State'), field(c, 'System.WorkItemType'), typeStateMap));
+      if (openChildren.length === 0) {
+        const lastClosed = childItems.map(c => field(c, 'System.ChangedDate')).filter(Boolean).sort().pop();
+        attention.push({
+          id: tr.id, title: field(tr, 'System.Title'), state: field(tr, 'System.State'),
+          created: field(tr, 'System.CreatedDate'), changed: field(tr, 'System.ChangedDate'),
+          childCount: childItems.length, lastClosed,
+          isNew: !prevSeenSet.has(tr.id),
+        });
+      } else if (openChildren.length === 1) {
+        nearlyThere.push({
+          id: tr.id, title: field(tr, 'System.Title'), state: field(tr, 'System.State'),
+          childCount: childItems.length,
+          stillOpen: `#${openChildren[0].id} ${field(openChildren[0], 'System.WorkItemType')} (${field(openChildren[0], 'System.State')})`,
+          created: field(tr, 'System.CreatedDate'),
+        });
+      }
+    });
+
+    attention.sort((a, b) => (a.created || '') < (b.created || '') ? -1 : 1); // oldest created first
+    nearlyThere.sort((a, b) => (a.created || '') < (b.created || '') ? -1 : 1);
+
+    storage.set('mt-review-seen', JSON.stringify(attention.map(a => a.id)));
+
+    lastResults = attention; lastResults._loaded = true;
+    renderAttention(attention);
+    renderNear(nearlyThere);
+
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before it could reach Azure DevOps — almost always a CORS block on Microsoft\'s end, not fixable from this page.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — double check the PAT has "Work Items (Read)" scope and hasn\'t expired.');
+    } else if (err.message === 'HTTP_404') {
+      showError('Got a 404 — double check the organization and project names are spelled exactly as they appear in Azure DevOps.');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const step = err.wiqlLabel ? `<strong>Step:</strong> ${err.wiqlLabel}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      showError(`<strong>${err.message.replace('HTTP_','HTTP ')} — something in this request was rejected.</strong><br>${step}${detail}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderAttention(attention) {
+  const hideRecent = document.getElementById('hideRecent').checked;
+  const hours = parseFloat(document.getElementById('recentHours').value) || 0;
+  const nowMs = Date.now();
+
+  const visible = attention.filter(a => {
+    if (!hideRecent) return true;
+    const hoursSinceChanged = (nowMs - new Date(a.changed).getTime()) / 3600000;
+    return hoursSinceChanged >= hours;
+  });
+
+  document.getElementById('sec-attention').style.display = 'block';
+  document.getElementById('meta-attention').textContent =
+    `${visible.length} Master Tracker(s) needing attention` + (hideRecent ? ` (${attention.length - visible.length} hidden — touched in the last ${hours}h)` : '');
+
+  const ages = visible.map(a => daysAgo(a.created)).filter(d => d != null);
+  const newCount = visible.filter(a => a.isNew).length;
+  const stats = document.getElementById('stats');
+  stats.style.display = visible.length ? 'grid' : 'none';
+  stats.innerHTML = `
+    <div class="stat"><div class="num">${visible.length}</div><div class="label">Needing attention</div></div>
+    <div class="stat"><div class="num">${ages.length ? Math.max(...ages) : 0}</div><div class="label">Oldest (days)</div></div>
+    <div class="stat"><div class="num">${ages.length ? Math.round(ages.reduce((a,b) => a+b, 0) / ages.length) : 0}</div><div class="label">Average age (days)</div></div>
+    <div class="stat"><div class="num">${newCount}</div><div class="label">New since last visit</div></div>
+  `;
+
+  document.getElementById('rows-attention').innerHTML = visible.length
+    ? visible.map(a => {
+        const age = daysAgo(a.created);
+        const readySince = daysAgo(a.lastClosed);
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${a.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${a.id}</a>`
+          : `#${a.id}`;
+        const newBadge = a.isNew ? `<span class="badge badge-new">New</span>` : '';
+        return `<tr>
+          <td>${newBadge}</td>
+          <td>${idCell}</td>
+          <td>${a.title}</td>
+          <td><span class="badge">${a.state}</span></td>
+          <td>${a.childCount}</td>
+          <td>${(a.created || '').slice(0,10)}</td>
+          <td class="${ageClass(age)}">${age == null ? '' : age}</td>
+          <td>${(a.lastClosed || '').slice(0,10) || '—'}</td>
+          <td>${readySince == null ? '—' : readySince}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="9" class="empty">Nothing needing attention right now</td></tr>';
+}
+
+function renderNear(nearlyThere) {
+  document.getElementById('sec-near').style.display = nearlyThere.length ? 'block' : 'none';
+  document.getElementById('rows-near').innerHTML = nearlyThere.length
+    ? nearlyThere.map(n => {
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${n.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${n.id}</a>`
+          : `#${n.id}`;
+        const age = daysAgo(n.created);
+        return `<tr><td>${idCell}</td><td>${n.title}</td><td><span class="badge">${n.state}</span></td>
+          <td>${n.childCount}</td><td>${n.stillOpen}</td><td>${(n.created||'').slice(0,10)}</td><td>${age == null ? '' : age}</td></tr>`;
+      }).join('')
+    : '';
+}
+
+async function copyList() {
+  if (!lastResults.length) return;
+  const lines = lastResults.map(a => {
+    const age = daysAgo(a.created);
+    const readySince = daysAgo(a.lastClosed);
+    return `#${a.id}  ${a.title}  — created ${age}d ago, ${a.childCount} children, ready ${readySince == null ? '?' : readySince}d ago`;
+  });
+  const text = `MASTER TRACKERS NEEDING ATTENTION — ${new Date().toISOString().slice(0,10)}\n\n${lines.join('\n')}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    document.getElementById('copy-status').textContent = 'Copied to clipboard.';
+  } catch (e) {
+    document.getElementById('copy-status').textContent = 'Clipboard blocked by the browser.';
+  }
+}
+
+restoreConfig();
+loadProfiles();
+</script>
+</body>
+</html>
