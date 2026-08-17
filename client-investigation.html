@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Client Investigation</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -59,33 +62,23 @@
 </style>
 </head>
 <body>
+<script>ADONav.render('client');</script>
+<div class="app-main">
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-    <h1>Client Investigation</h1>
-    <a href="index.html" target="_blank" rel="noopener"
-       style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-      ← Back to Dashboard
-    </a>
-  </div>
+  <h1>Client Investigation</h1>
   <div class="subtitle">Search across Title, Description, Tags, and a Client field (if found) for a recurring name — surfaces patterns, not just a list.</div>
 
   <div class="card">
-    <h2>Connection</h2>
-    <div class="config-grid">
-      <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
-      <div class="field"><label>Project</label><input id="project" placeholder="project-name"></div>
-      <div class="field"><label>Team</label><input id="team" placeholder="project-name Team"></div>
-      <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
     </div>
-    <h2 style="margin-top:18px">Search</h2>
+    <h2>Search</h2>
     <div class="config-grid">
       <div class="field"><label>Search term</label><input id="searchTerm" placeholder="e.g. George"></div>
     </div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
       <button id="loadBtn" onclick="runInvestigation()">Search & Analyze</button>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;font-weight:400">
-        <input type="checkbox" id="remember"> Remember connection on this device
-      </label>
       <span id="status"></span>
     </div>
   </div>
@@ -182,6 +175,13 @@ const storage = {
       document.getElementById('remember').checked = true;
     } catch (e) {}
   }
+})();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+  document.getElementById('searchTerm').focus();
 })();
 
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
@@ -687,5 +687,6 @@ async function loadBuildHealth() {
 
 loadPipelineList();
 </script>
+</div>
 </body>
 </html>
