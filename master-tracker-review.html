@@ -163,6 +163,24 @@
     <tbody id="rows-orphans"></tbody></table></div>
   </section>
 
+  <section id="sec-completed-other" style="display:none">
+    <h2>Completed by someone other than the assignee</h2>
+    <div class="meta" id="meta-completed-other">Work item moved to Done by someone who wasn't the person it was assigned to — worth a quick sanity check.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>Master Tracker</th><th>Assigned to</th><th>Completed by</th><th>Date</th>
+    </tr></thead>
+    <tbody id="rows-completed-other"></tbody></table></div>
+  </section>
+
+  <section id="sec-undocumented" style="display:none">
+    <h2>⚠ Undocumented completions</h2>
+    <div class="meta" id="meta-undocumented">Moved to Done with no description and no comments — no record of what was actually done.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>Master Tracker</th><th>Completed by</th><th>Date</th><th>Missing</th>
+    </tr></thead>
+    <tbody id="rows-undocumented"></tbody></table></div>
+  </section>
+
 <script>
 let workItemBaseUrl = '';
 let lastResults = []; // needing-attention rows, kept for copyList()
@@ -174,6 +192,72 @@ const storage = {
 
 // Reuses the same config/profile storage keys as the main dashboard, so
 // org/project/PAT don't need to be re-typed if you already used that page.
+let _adoBase = '';
+async function getWorkItemUpdates(id) {
+  return adoGet(`${_adoBase}/_apis/wit/workitems/${id}/updates?api-version=7.1`);
+}
+async function getWorkItemComments(id) {
+  return adoGet(`${_adoBase}/_apis/wit/workitems/${id}/comments?api-version=7.1-preview.3`);
+}
+
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Runs async worker(item) over items with at most `limit` in flight at once —
+// keeps us from firing hundreds of simultaneous requests at Azure DevOps.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// For a work item that's currently Done: finds who actually moved it to Done
+// (from its revision history, not just who last touched it) and who it was
+// assigned to at that moment.
+async function analyzeCompletion(child) {
+  const updates = await getWorkItemUpdates(child.id);
+  const toDoneUpdates = (updates.value || []).filter(u =>
+    u.fields && u.fields['System.State'] && u.fields['System.State'].newValue === 'Done');
+  const lastTransition = toDoneUpdates[toDoneUpdates.length - 1];
+  if (!lastTransition) return null; // e.g. created directly in Done — nothing to compare
+
+  const completedBy = lastTransition.revisedBy || {};
+  const assignedAtTransition = lastTransition.fields['System.AssignedTo']
+    ? lastTransition.fields['System.AssignedTo'].newValue
+    : field(child, 'System.AssignedTo', null);
+
+  let comments = { count: 0 };
+  try {
+    const c = await getWorkItemComments(child.id);
+    comments = { count: c.totalCount != null ? c.totalCount : (c.comments || []).length };
+  } catch (e) {}
+
+  return {
+    id: child.id,
+    title: field(child, 'System.Title'),
+    type: field(child, 'System.WorkItemType'),
+    completedByName: completedBy.displayName || completedBy.uniqueName || 'Unknown',
+    completedByKey: (completedBy.uniqueName || completedBy.displayName || '').toLowerCase(),
+    assignedToName: assignedAtTransition ? (typeof assignedAtTransition === 'object'
+      ? (assignedAtTransition.displayName || assignedAtTransition.uniqueName) : String(assignedAtTransition)) : null,
+    assignedToKey: assignedAtTransition ? (typeof assignedAtTransition === 'object'
+      ? (assignedAtTransition.uniqueName || assignedAtTransition.displayName || '') : String(assignedAtTransition)).toLowerCase() : null,
+    date: lastTransition.fields['System.ChangedDate'] ? lastTransition.fields['System.ChangedDate'].newValue : field(child, 'System.ChangedDate'),
+    descriptionEmpty: !stripHtml(field(child, 'System.Description')),
+    commentCount: comments.count,
+  };
+}
+
 function restoreConfig() {
   const raw = storage.get('ado-config');
   if (!raw) return;
@@ -290,6 +374,7 @@ async function loadReview() {
   setStatus('Connecting...');
 
   const base = `https://dev.azure.com/${org}`;
+  _adoBase = base;
   const projectBase = `${base}/${project}`;
   workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
 
@@ -373,6 +458,8 @@ async function loadReview() {
       const orphanIds0 = allOpenIds;
       const orphanItems0 = await getItems(base, orphanIds0, ['System.Id','System.Title','System.State','System.CreatedDate']);
       renderOrphans(orphanItems0);
+      renderCompletedByOther([]);
+      renderUndocumented([]);
       document.getElementById('stats').style.display = 'none';
       document.getElementById('sec-attention').style.display = 'block';
       document.getElementById('meta-attention').textContent = '0 Master Tracker(s) needing attention';
@@ -387,10 +474,12 @@ async function loadReview() {
     const orphanIds = allOpenIds.filter(id => !parentIds.has(id));
     const [trackers, children, orphanItems] = await Promise.all([
       getItems(base, [...parentIds], ['System.Id','System.Title','System.State','System.CreatedDate','System.ChangedDate']),
-      getItems(base, allChildIds, ['System.Id','System.WorkItemType','System.State','System.ChangedDate']),
+      getItems(base, allChildIds, ['System.Id','System.WorkItemType','System.State','System.ChangedDate','System.AssignedTo','System.Description','System.Title']),
       getItems(base, orphanIds, ['System.Id','System.Title','System.State','System.CreatedDate']),
     ]);
     const childById = Object.fromEntries(children.map(c => [c.id, c]));
+    const childToParent = {};
+    Object.entries(parentToChildren).forEach(([pid, cids]) => cids.forEach(cid => { childToParent[cid] = Number(pid); }));
 
     const prevSeenRaw = storage.get('mt-review-seen');
     let prevSeen = [];
@@ -429,6 +518,13 @@ async function loadReview() {
 
     storage.set('mt-review-seen', JSON.stringify(attention.map(a => a.id)));
 
+    setStatus('Checking completions for anomalies...');
+    const doneChildren = children.filter(c => field(c, 'System.State').toLowerCase() === 'done');
+    const analyses = (await mapWithConcurrency(doneChildren, 6, analyzeCompletion)).filter(Boolean);
+    const completedByOther = analyses.filter(a =>
+      a.assignedToKey && a.completedByKey && a.assignedToKey !== a.completedByKey);
+    const undocumented = analyses.filter(a => a.descriptionEmpty && a.commentCount === 0);
+
     lastResults = attention; lastResults._loaded = true;
     const avgChildren = childCounts.length ? childCounts.reduce((a, b) => a + b, 0) / childCounts.length : 0;
     const conversionRate = trackers.length ? (attention.length / trackers.length) * 100 : 0;
@@ -437,6 +533,8 @@ async function loadReview() {
     renderNear(nearlyThere);
     renderReopened(reopenedItems);
     renderOrphans(orphanItems);
+    renderCompletedByOther(completedByOther, childToParent);
+    renderUndocumented(undocumented, childToParent);
     const avgAgeToday = attention.length
       ? Math.round(attention.map(a => daysAgo(a.created)).filter(d => d != null).reduce((s, d) => s + d, 0) / attention.length)
       : null;
@@ -461,6 +559,38 @@ async function loadReview() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function renderCompletedByOther(items, childToParent) {
+  const sec = document.getElementById('sec-completed-other');
+  sec.style.display = items.length ? 'block' : 'none';
+  document.getElementById('rows-completed-other').innerHTML = items.map(it => {
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+      : `#${it.id}`;
+    const parentId = childToParent[it.id];
+    const parentCell = parentId && workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${parentId}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">#${parentId}</a>`
+      : (parentId ? `#${parentId}` : '—');
+    return `<tr><td>${idCell}</td><td>${it.title}</td><td><span class="badge">${it.type}</span></td><td>${parentCell}</td>
+      <td>${it.assignedToName || '—'}</td><td><span class="badge badge-warn">${it.completedByName}</span></td><td>${(it.date||'').slice(0,10)}</td></tr>`;
+  }).join('');
+}
+
+function renderUndocumented(items, childToParent) {
+  const sec = document.getElementById('sec-undocumented');
+  sec.style.display = items.length ? 'block' : 'none';
+  document.getElementById('rows-undocumented').innerHTML = items.map(it => {
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+      : `#${it.id}`;
+    const parentId = childToParent[it.id];
+    const parentCell = parentId && workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${parentId}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">#${parentId}</a>`
+      : (parentId ? `#${parentId}` : '—');
+    return `<tr><td>${idCell}</td><td>${it.title}</td><td><span class="badge">${it.type}</span></td><td>${parentCell}</td>
+      <td>${it.completedByName}</td><td>${(it.date||'').slice(0,10)}</td><td><span class="badge badge-bad">No description, no comments</span></td></tr>`;
+  }).join('');
 }
 
 function renderOverview(o) {
