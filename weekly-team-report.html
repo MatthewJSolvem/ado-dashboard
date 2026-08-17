@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Weekly Team Report</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -55,35 +58,25 @@
 </style>
 </head>
 <body>
+<script>ADONav.render('weekly');</script>
+<div class="app-main">
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-    <h1>Weekly Team Report</h1>
-    <a href="index.html" target="_blank" rel="noopener"
-       style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-      ← Back to Dashboard
-    </a>
-  </div>
+  <h1>Weekly Team Report</h1>
   <div class="subtitle">A separate, focused view for building a curated weekly email — shows each team's actual current sprint, tick the items you want to report on, then send.</div>
 
   <div class="card">
-    <h2>Connection</h2>
-    <div class="config-grid">
-      <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
-      <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
-      <div class="field"><label>Team</label><input id="team" placeholder="your-project-name Team"></div>
-      <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
     </div>
-    <h2 style="margin-top:18px">Teams</h2>
+    <h2>Teams</h2>
     <div class="config-grid">
       <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
       <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
       <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
     </div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
-      <button id="loadBtn" onclick="loadWeeklyItems()">Load Current Sprints</button>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;font-weight:400">
-        <input type="checkbox" id="remember"> Remember org/project/team/team names on this device
-      </label>
+      <button id="loadBtn" onclick="loadWeeklyItems()">Refresh Current Sprints</button>
       <span id="status"></span>
     </div>
   </div>
@@ -263,6 +256,15 @@ renderLegend();
       document.getElementById('areaAnalysis').value = a.analysis || '';
       document.getElementById('remember').checked = true;
     } catch (e) {}
+  }
+})();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+  if (document.getElementById('areaDev').value && document.getElementById('areaQA').value && document.getElementById('areaAnalysis').value) {
+    loadWeeklyItems();
   }
 })();
 
@@ -629,5 +631,6 @@ async function copyExportTable() {
   }
 }
 </script>
+</div>
 </body>
 </html>
