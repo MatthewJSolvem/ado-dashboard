@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <title>ADO Morning Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -76,50 +79,30 @@
 </style>
 </head>
 <body>
+<script>ADONav.render('dashboard');</script>
+<div class="app-main">
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-    <h1>ADO Morning Dashboard</h1>
-    <div style="display:flex;gap:16px">
-      <a href="weekly-team-report.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        Weekly Team Report →
-      </a>
-      <a href="client-investigation.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        Client Investigation →
-      </a>
-      <a href="leaderboard.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        🏆 Leaderboard →
-      </a>
-      <a href="master-tracker-review.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        Master Tracker Review →
-      </a>
-    </div>
-  </div>
-  <div class="subtitle">Runs entirely in your browser — nothing installed. Works the same whether opened locally or hosted (e.g. on GitHub Pages). Rows sitting more than 5 days in their current state are highlighted.</div>
+  <h1>ADO Morning Dashboard</h1>
+  <div class="subtitle">Runs entirely in your browser — nothing installed. Rows sitting more than 5 days in their current state are highlighted.</div>
 
   <div class="config">
-    <div class="field"><label>Saved Profile</label>
+    <div style="display:none">
       <select id="profileSelect" onchange="applyProfile(this.value)"><option value="">-- New / unsaved --</option></select>
-    </div>
-    <div class="field"><label>Profile Name</label><input id="profileName" placeholder="e.g. CES Project"></div>
-    <div class="field"><label>Profile Actions</label>
-      <div style="display:flex; gap:8px;">
-        <button type="button" class="small" onclick="saveProfile()">Save</button>
-        <button type="button" class="small danger" onclick="deleteProfile()">Delete</button>
-      </div>
+      <input id="profileName">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
     </div>
 
-    <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
-    <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
-    <div class="field"><label>Team</label><input id="team" placeholder="your-project-name Team"></div>
-    <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
-    <div class="field"><label>Send report to (optional)</label><input id="recipient" placeholder="you@company.com"></div>
+    <div class="actions" style="margin-bottom:2px">
+      <button id="loadBtn" onclick="loadDashboard()">Refresh Dashboard</button>
+      <button id="sendBtn" onclick="sendReport()" disabled>Send Report</button>
+      <span id="status"></span>
+    </div>
 
-    <div class="field full">
-      <label>Report Sections — choose what to include before generating</label>
+    <details class="config-details full" style="grid-column:1/-1">
+      <summary>Report options</summary>
+      <div class="field" style="margin-bottom:12px;max-width:320px"><label>Send report to (optional)</label><input id="recipient" placeholder="you@company.com"></div>
+      <label style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px">Report Sections — choose what to include before generating</label>
       <div class="section-toggles">
         <label><input type="checkbox" id="show-insights" checked onchange="saveSectionPrefs()"> Automated insights</label>
         <label><input type="checkbox" id="show-burndown" checked onchange="saveSectionPrefs()"> Sprint burndown status</label>
@@ -138,14 +121,7 @@
         <label><input type="checkbox" id="show-backlogAge" checked onchange="saveSectionPrefs()"> Backlog age chart</label>
         <label><input type="checkbox" id="show-comments" checked onchange="saveSectionPrefs()"> Recent comments (project-wide, open items)</label>
       </div>
-    </div>
-
-    <div class="actions">
-      <button id="loadBtn" onclick="loadDashboard()">Load Dashboard</button>
-      <button id="sendBtn" onclick="sendReport()" disabled>Send Report</button>
-      <label class="checkbox"><input type="checkbox" id="remember"> Remember org/project/team/recipient on this device (not the token)</label>
-      <span id="status"></span>
-    </div>
+    </details>
   </div>
 
   <div id="error"></div>
@@ -411,6 +387,15 @@ function saveExcludeAssignees() {
 
 restoreConfig();
 loadProfiles();
+
+// ---- shared login: pull org/project/team/PAT from the session set on
+// the login screen, then load automatically ----
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+  loadDashboard();
+})();
 restoreSectionPrefs();
 restoreExcludeAssignees();
 
@@ -1611,5 +1596,6 @@ function sendReport() {
   window.location.href = mailto;
 }
 </script>
+</div>
 </body>
 </html>
