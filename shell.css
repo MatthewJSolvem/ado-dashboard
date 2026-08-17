@@ -1,0 +1,130 @@
+/* ========================================================================
+   ADO Ops Console — shared app shell (sidebar, connection bar, layout)
+   Loaded by every screen except login.html
+   ======================================================================== */
+
+:root {
+  --shell-sidebar-w: 232px;
+  --sb-bg: #161a24;
+  --sb-bg-raised: #1d2230;
+  --sb-bg-active: #262c40;
+  --sb-border: #262c3c;
+  --sb-text: #98a2b8;
+  --sb-text-dim: #5f6a82;
+  --sb-text-active: #ffffff;
+  --sb-accent: #6b74e8;
+  --sb-accent-soft: rgba(107, 116, 232, 0.16);
+  --sb-live: #2dd4bf;
+}
+
+html, body { height: 100%; }
+
+body.shell-body {
+  margin: 0;
+  padding: 0 !important;
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+  background: var(--bg);
+}
+
+/* ---- sidebar ---- */
+.app-sidebar {
+  width: var(--shell-sidebar-w);
+  flex: 0 0 var(--shell-sidebar-w);
+  background: var(--sb-bg);
+  color: var(--sb-text);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+}
+
+.app-sidebar .brand {
+  padding: 22px 20px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--sb-border);
+}
+.app-sidebar .brand .mark {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--sb-accent), #3f46b0);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff; letter-spacing: -0.5px;
+  flex: 0 0 auto;
+}
+.app-sidebar .brand .name { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -0.1px; line-height: 1.2; }
+.app-sidebar .brand .sub { font-size: 10.5px; color: var(--sb-text-dim); text-transform: uppercase; letter-spacing: 0.6px; margin-top: 1px; }
+
+.app-sidebar nav { padding: 14px 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.app-sidebar .nav-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--sb-text-dim);
+  padding: 10px 10px 6px; font-weight: 700; }
+.app-sidebar a.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 6px; color: var(--sb-text);
+  text-decoration: none; font-size: 13px; font-weight: 500;
+  transition: background .12s ease, color .12s ease;
+}
+.app-sidebar a.nav-item .ico {
+  width: 18px; height: 18px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  color: inherit; opacity: 0.85;
+}
+.app-sidebar a.nav-item .ico svg { width: 16px; height: 16px; }
+.app-sidebar a.nav-item:hover { background: var(--sb-bg-raised); color: #fff; }
+.app-sidebar a.nav-item.active { background: var(--sb-accent-soft); color: #fff; font-weight: 700; box-shadow: inset 2px 0 0 var(--sb-accent); }
+
+.app-sidebar .connection {
+  margin: 8px 12px 14px; padding: 12px 12px; border-radius: 8px;
+  background: var(--sb-bg-raised); border: 1px solid var(--sb-border);
+}
+.app-sidebar .connection .row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.app-sidebar .connection .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sb-live);
+  box-shadow: 0 0 0 3px rgba(45,212,191,0.18); flex: 0 0 auto; }
+.app-sidebar .connection .dot.off { background: #52596e; box-shadow: none; }
+.app-sidebar .connection .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--sb-text-dim); font-weight: 700; }
+.app-sidebar .connection .path { font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; color: #e4e7f1;
+  word-break: break-word; line-height: 1.4; margin-bottom: 8px; }
+.app-sidebar .connection a.switch { font-size: 11.5px; color: var(--sb-accent); text-decoration: none; font-weight: 600; }
+.app-sidebar .connection a.switch:hover { text-decoration: underline; }
+
+.app-sidebar .sidebar-footer { padding: 12px 20px 18px; font-size: 11px; color: var(--sb-text-dim); border-top: 1px solid var(--sb-border); }
+
+/* ---- main content area ---- */
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 28px 32px;
+  overflow-x: hidden;
+}
+.app-main > .subtitle { margin-top: -2px; }
+
+/* legacy top nav row (page-to-page links) no longer used inside app-main once sidebar is present */
+.legacy-toplinks { display: none !important; }
+
+/* collapsible "report options" panel used on every report page now that
+   connection details live on the login screen */
+details.config-details summary {
+  cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 700; color: var(--accent, #3f51b5);
+  text-transform: uppercase; letter-spacing: 0.3px; padding: 2px 0 10px;
+}
+details.config-details summary::-webkit-details-marker { display: none; }
+details.config-details summary:before { content: '▸ '; }
+details.config-details[open] summary:before { content: '▾ '; }
+details.config-details[open] summary { padding-bottom: 12px; }
+
+@media (max-width: 880px) {
+  body.shell-body { flex-direction: column; }
+  .app-sidebar { position: relative; height: auto; width: 100%; flex: 0 0 auto; }
+  .app-sidebar nav { flex-direction: row; flex-wrap: wrap; }
+  .app-main { padding: 20px; }
+}
+
+@media print {
+  .app-sidebar { display: none !important; }
+  body.shell-body { display: block !important; }
+  .app-main { padding: 0 !important; }
+}

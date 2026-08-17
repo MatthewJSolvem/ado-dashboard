@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Connect — ADO Ops Console</title>
+<style>
+  :root {
+    --accent: #6b74e8; --accent-dark: #4f57c9;
+    --bad: #ff6b6b; --bad-bg: rgba(255,107,107,0.12);
+    --muted: #8891a8;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+    background: radial-gradient(circle at 20% 20%, #1f2438 0%, #12141f 55%, #0c0e16 100%);
+    color: #e7eaf3; padding: 24px;
+  }
+
+  .wrap { width: 100%; max-width: 420px; }
+
+  .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .brand-row .mark {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), #3f46b0);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px; color: #fff;
+  }
+  .brand-row .titles .name { font-size: 15px; font-weight: 700; color: #fff; }
+  .brand-row .titles .sub { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.2px; }
+  .lede { color: var(--muted); font-size: 13.5px; line-height: 1.5; margin: 0 0 24px; }
+
+  .panel {
+    background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px; padding: 22px; backdrop-filter: blur(6px);
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  .field .opt { font-weight: 400; text-transform: none; letter-spacing: 0; color: #5c657c; }
+  .field input, .field select {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 7px;
+    color: #f1f3fa; padding: 10px 12px; font-size: 13.5px; font-family: inherit;
+  }
+  .field input::placeholder { color: #5c657c; }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,0.08); }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .path-preview {
+    font-family: 'SF Mono', Consolas, monospace; font-size: 12.5px; color: #9aa3c7;
+    background: rgba(0,0,0,0.28); border: 1px dashed rgba(255,255,255,0.14); border-radius: 7px;
+    padding: 9px 12px; margin: -2px 0 16px; min-height: 34px; display: flex; align-items: center;
+    word-break: break-all;
+  }
+  .path-preview .dim { color: #4a5170; }
+
+  .checkline { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+  .checkline input { margin-top: 2px; }
+  .checkline .hint { display: block; color: #5c657c; margin-top: 2px; }
+
+  button.primary {
+    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 12px 20px; font-size: 13.5px; font-weight: 700; letter-spacing: 0.3px;
+    cursor: pointer; text-transform: uppercase; box-shadow: 0 4px 14px rgba(107,116,232,0.35);
+  }
+  button.primary:hover { background: var(--accent-dark); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #error {
+    background: var(--bad-bg); border: 1px solid rgba(255,107,107,0.35); color: #ffb3b3;
+    border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.5; display: none;
+  }
+
+  .profiles-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+  .profiles-bar select { flex: 1; }
+  .profiles-bar button {
+    background: transparent; border: 1px solid rgba(255,255,255,0.14); color: var(--muted);
+    border-radius: 7px; padding: 9px 10px; font-size: 11.5px; cursor: pointer; white-space: nowrap;
+  }
+  .profiles-bar button:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+
+  .save-profile-row { display: flex; gap: 8px; margin-top: 4px; margin-bottom: 18px; }
+  .save-profile-row input { flex: 1; }
+  .save-profile-row button {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #dfe3f0;
+    border-radius: 7px; padding: 0 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .save-profile-row button:hover { background: rgba(255,255,255,0.1); }
+
+  .divider { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 18px 0; }
+
+  .footnote { text-align: center; font-size: 11.5px; color: #4a5170; margin-top: 20px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+    <div class="brand-row">
+      <div class="mark">A</div>
+      <div class="titles"><div class="name">ADO Ops Console</div><div class="sub">Azure DevOps</div></div>
+    </div>
+
+    <h1>Connect your project</h1>
+    <p class="lede">Enter your Azure DevOps details once — every report (dashboard, tracker review, weekly report, client search, leaderboard) will reuse this connection.</p>
+
+    <div class="panel">
+      <div id="error"></div>
+
+      <div class="profiles-bar" id="profiles-bar" style="display:none">
+        <select id="profileSelect" onchange="applyProfile(this.value)">
+          <option value="">-- Saved connections --</option>
+        </select>
+        <button type="button" onclick="deleteProfile()">Delete</button>
+      </div>
+
+      <div class="field">
+        <label>Organization</label>
+        <input id="org" placeholder="your-org-name" autocomplete="off">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Project</label>
+          <input id="project" placeholder="your-project-name" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Team <span class="opt">(optional)</span></label>
+          <input id="team" placeholder="Project Team" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label>Personal Access Token</label>
+        <input id="pat" type="password" placeholder="paste PAT here" autocomplete="off">
+      </div>
+
+      <div class="path-preview" id="path-preview"><span class="dim">dev.azure.com/</span>your-org<span class="dim">/</span>your-project</div>
+
+      <div class="checkline">
+        <input type="checkbox" id="remember">
+        <span>Stay connected on this device
+          <span class="hint">Keeps this org, project, team, and token in this browser's storage until you switch connections. Leave unchecked to stay signed in for this browser tab only.</span>
+        </span>
+      </div>
+
+      <button class="primary" id="connectBtn" onclick="connect()">Connect →</button>
+
+      <hr class="divider">
+
+      <div class="save-profile-row">
+        <input id="profileName" placeholder="Name this connection, e.g. CES Project">
+        <button type="button" onclick="saveProfile()">Save</button>
+      </div>
+    </div>
+
+    <div class="footnote">Runs entirely in your browser. Your token is never sent anywhere but Azure DevOps.</div>
+  </div>
+
+<script src="session.js"></script>
+<script>
+function showError(msg) {
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+function updatePreview() {
+  const org = document.getElementById('org').value.trim() || 'your-org';
+  const project = document.getElementById('project').value.trim() || 'your-project';
+  document.getElementById('path-preview').innerHTML =
+    '<span class="dim">dev.azure.com/</span>' + org + '<span class="dim">/</span>' + project;
+}
+['org', 'project'].forEach(id => document.getElementById(id).addEventListener('input', updatePreview));
+
+// ---- saved profiles (org/project/team only — never the token) ----
+let profiles = {};
+function refreshProfilesUI() {
+  profiles = ADOSession.loadProfiles();
+  const bar = document.getElementById('profiles-bar');
+  const sel = document.getElementById('profileSelect');
+  const names = Object.keys(profiles).sort();
+  if (!names.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  sel.innerHTML = '<option value="">-- Saved connections --</option>' +
+    names.map(n => `<option value="${n}">${n}</option>`).join('');
+}
+function applyProfile(name) {
+  if (!name || !profiles[name]) return;
+  const p = profiles[name];
+  document.getElementById('org').value = p.org || '';
+  document.getElementById('project').value = p.project || '';
+  document.getElementById('team').value = p.team || '';
+  document.getElementById('profileName').value = name;
+  updatePreview();
+}
+function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  if (!name) { showError('Give this connection a name first, then click Save.'); return; }
+  clearError();
+  profiles[name] = {
+    org: document.getElementById('org').value.trim(),
+    project: document.getElementById('project').value.trim(),
+    team: document.getElementById('team').value.trim(),
+  };
+  try { localStorage.setItem('ado-profiles', JSON.stringify(profiles)); } catch (e) {}
+  refreshProfilesUI();
+  document.getElementById('profileSelect').value = name;
+}
+function deleteProfile() {
+  const sel = document.getElementById('profileSelect');
+  const name = sel.value;
+  if (!name) return;
+  delete profiles[name];
+  try { localStorage.setItem('ado-profiles', JSON.stringify(profiles)); } catch (e) {}
+  refreshProfilesUI();
+}
+
+function connect() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const team = document.getElementById('team').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const remember = document.getElementById('remember').checked;
+
+  if (!org || !project || !pat) {
+    showError('Organization, project, and personal access token are required.');
+    return;
+  }
+
+  ADOSession.save({ org, project, team, pat }, remember);
+
+  const params = new URLSearchParams(location.search);
+  const next = params.get('next');
+  const safeNext = next && /^[a-z0-9\-]+\.html$/i.test(next) ? next : 'index.html';
+  location.href = safeNext;
+}
+
+// Pre-fill from an existing session, if there is one (e.g. arrived here via
+// "Switch connection" and just wants to tweak project or drop in a fresh PAT).
+(function hydrate() {
+  const cfg = ADOSession.load();
+  if (cfg) {
+    document.getElementById('org').value = cfg.org || '';
+    document.getElementById('project').value = cfg.project || '';
+    document.getElementById('team').value = cfg.team || '';
+    document.getElementById('pat').value = cfg.pat || '';
+    try { if (localStorage.getItem('ado-session')) document.getElementById('remember').checked = true; } catch (e) {}
+  }
+  updatePreview();
+  refreshProfilesUI();
+})();
+
+document.getElementById('org').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('project').focus(); });
+document.getElementById('project').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('pat').focus(); });
+document.getElementById('pat').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+</script>
+</body>
+</html>
