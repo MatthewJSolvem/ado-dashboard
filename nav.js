@@ -32,10 +32,6 @@ const ADONav = (function () {
       return '<a class="' + cls + '" href="' + p.href + '"><span class="ico">' + p.ico + '</span>' + p.label + '</a>';
     }).join('');
 
-    const path = connected
-      ? escapeHtml(cfg.org) + ' / ' + escapeHtml(cfg.project) + (cfg.team ? '<br>' + escapeHtml(cfg.team) : '')
-      : 'Not connected';
-
     const html =
       '<aside class="app-sidebar">' +
         '<div class="brand"><div class="mark">A</div><div><div class="name">ADO Ops Console</div><div class="sub">Azure DevOps</div></div></div>' +
@@ -43,9 +39,9 @@ const ADONav = (function () {
           '<div class="nav-label">Reports</div>' +
           navItems +
         '</nav>' +
-        '<div class="connection">' +
-          '<div class="row"><span class="dot' + (connected ? '' : ' off') + '"></span><span class="label">' + (connected ? 'Connected' : 'No connection') + '</span></div>' +
-          '<div class="path">' + path + '</div>' +
+        '<div class="connection" id="sidebar-connection">' +
+          '<div class="row"><span class="dot off" id="sidebar-dot"></span><span class="label" id="sidebar-conn-label">Checking…</span></div>' +
+          '<div class="path" id="sidebar-conn-path">—</div>' +
           '<a class="switch" href="login.html">Switch connection →</a>' +
         '</div>' +
         '<div class="sidebar-footer">Runs entirely in your browser.<br>Nothing is sent anywhere but Azure DevOps.</div>' +
@@ -53,7 +49,27 @@ const ADONav = (function () {
 
     document.body.classList.add('shell-body');
     document.body.insertAdjacentHTML('afterbegin', html);
+
+    // best-effort initial paint; a page that confirms a working session later
+    // should call updateConnection(cfg) to guarantee the badge matches reality
+    updateConnection(cfg);
   }
 
-  return { render: render };
+  // Call this once a page has actually confirmed (or failed to confirm) a
+  // usable session, so the badge always matches what's really being used —
+  // never just what storage looked like at the instant the sidebar painted.
+  function updateConnection(cfg) {
+    const dot = document.getElementById('sidebar-dot');
+    const label = document.getElementById('sidebar-conn-label');
+    const path = document.getElementById('sidebar-conn-path');
+    if (!dot || !label || !path) return;
+    const connected = !!(cfg && cfg.org && cfg.project);
+    dot.className = 'dot' + (connected ? '' : ' off');
+    label.textContent = connected ? 'Connected' : 'No connection';
+    path.innerHTML = connected
+      ? escapeHtml(cfg.org) + ' / ' + escapeHtml(cfg.project) + (cfg.team ? '<br>' + escapeHtml(cfg.team) : '')
+      : 'Not connected';
+  }
+
+  return { render: render, updateConnection: updateConnection };
 })();

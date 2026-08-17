@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="shell.css">
 <script src="session.js"></script>
 <script src="nav.js"></script>
+<script src="loader.js"></script>
 <style>
   :root {
     --bg: #1a1a2e; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -203,12 +204,13 @@ loadRoster();
 (function () {
   const session = ADOSession.requireSession();
   if (!session) return;
+  ADONav.updateConnection(session);
   ADOSession.hydrateInputs({ org: 'org', project: 'project', pat: 'pat' });
   loadTeams();
 })();
 
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
-function showError(html) { const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
 function clearError() { document.getElementById('error').style.display = 'none'; }
 
 async function readAdoErrorDetail(res) {
@@ -291,6 +293,7 @@ async function loadTeams() {
 
   const btn = document.getElementById('loadTeamsBtn');
   btn.disabled = true;
+  ADOLoader.show('Connecting to Azure DevOps…');
   setStatus('Loading teams...');
   const base = `https://dev.azure.com/${org}`;
   try {
@@ -298,6 +301,7 @@ async function loadTeams() {
     teams = data.value || [];
     renderRoster();
     setStatus(`Found ${teams.length} team(s).`);
+    ADOLoader.hide();
   } catch (err) {
     if (err.message === 'CORS_OR_NETWORK') showError('Blocked before reaching Azure DevOps — likely a CORS restriction.');
     else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') showError('Authentication failed — check the PAT scope.');

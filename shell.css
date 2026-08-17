@@ -99,8 +99,38 @@ body.shell-body {
   min-width: 0;
   padding: 28px 32px;
   overflow-x: hidden;
+  position: relative;
 }
 .app-main > .subtitle { margin-top: -2px; }
+
+/* ---- loading overlay: covers the report content while data is fetched ---- */
+.app-loading {
+  position: fixed; top: 0; left: var(--shell-sidebar-w); right: 0; bottom: 0;
+  background: rgba(236, 239, 241, 0.94);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 40;
+  animation: adoFadeIn .15s ease;
+}
+.app-loading .box { width: 100%; max-width: 340px; text-align: center; padding: 0 20px; }
+.app-loading .spinner {
+  width: 30px; height: 30px; margin: 0 auto 18px; border-radius: 50%;
+  border: 3px solid rgba(63,81,181,0.15); border-top-color: var(--accent, #3f51b5);
+  animation: adoSpin .8s linear infinite;
+}
+.app-loading .text {
+  font-size: 13px; color: var(--text, #1a1a1a); font-weight: 600; margin-bottom: 14px;
+  min-height: 18px; letter-spacing: 0.1px;
+}
+.app-loading .track {
+  width: 100%; height: 6px; border-radius: 4px; background: rgba(63,81,181,0.12); overflow: hidden;
+}
+.app-loading .fill {
+  height: 100%; width: 4%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent, #3f51b5), #6b74e8);
+  transition: width .35s ease;
+}
+@keyframes adoSpin { to { transform: rotate(360deg); } }
+@keyframes adoFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* legacy top nav row (page-to-page links) no longer used inside app-main once sidebar is present */
 .legacy-toplinks { display: none !important; }
@@ -121,6 +151,7 @@ details.config-details[open] summary { padding-bottom: 12px; }
   .app-sidebar { position: relative; height: auto; width: 100%; flex: 0 0 auto; }
   .app-sidebar nav { flex-direction: row; flex-wrap: wrap; }
   .app-main { padding: 20px; }
+  .app-loading { left: 0; }
 }
 
 @media print {

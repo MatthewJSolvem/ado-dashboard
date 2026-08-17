@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="shell.css">
 <script src="session.js"></script>
 <script src="nav.js"></script>
+<script src="loader.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -269,8 +270,8 @@ function applyProfile(name) {
   document.getElementById('project').value = p.project || '';
 }
 
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
-function showError(html) { const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
 function clearError() { document.getElementById('error').style.display = 'none'; }
 
 async function readAdoErrorDetail(res) {
@@ -343,6 +344,7 @@ function rerender() {
 
 async function loadReview() {
   clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
   const org = document.getElementById('org').value.trim();
   const project = document.getElementById('project').value.trim();
   const pat = document.getElementById('pat').value.trim();
@@ -745,6 +747,7 @@ loadProfiles();
 (function () {
   const session = ADOSession.requireSession();
   if (!session) return;
+  ADONav.updateConnection(session);
   ADOSession.hydrateInputs({ org: 'org', project: 'project', pat: 'pat' });
   loadReview();
 })();
