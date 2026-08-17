@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Master Tracker Review</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -66,49 +69,32 @@
 </style>
 </head>
 <body>
+<script>ADONav.render('tracker');</script>
+<div class="app-main">
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-    <h1>Master Tracker Review</h1>
-    <div style="display:flex;gap:16px">
-      <a href="index.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        ← Back to Dashboard
-      </a>
-      <a href="weekly-team-report.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        Weekly Team Report →
-      </a>
-      <a href="client-investigation.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        Client Investigation →
-      </a>
-      <a href="leaderboard.html" target="_blank" rel="noopener"
-         style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">
-        🏆 Leaderboard →
-      </a>
-    </div>
-  </div>
+  <h1>Master Tracker Review</h1>
   <div class="subtitle">Master Trackers where every child item is done, but the tracker itself hasn't been moved to Ready for Review or Closed yet. Sorted oldest first (by creation date).</div>
 
   <div class="config">
-    <div class="field"><label>Saved Profile</label>
+    <div style="display:none">
       <select id="profileSelect" onchange="applyProfile(this.value)"><option value="">-- New / unsaved --</option></select>
-    </div>
-    <div class="field"><label>Organization</label><input id="org" placeholder="your-org-name"></div>
-    <div class="field"><label>Project</label><input id="project" placeholder="your-project-name"></div>
-    <div class="field"><label>Personal Access Token</label><input id="pat" type="password" placeholder="paste PAT here"></div>
-
-    <div class="field full">
-      <label>Exclude states from "needing attention" (comma-separated — trackers already in these states are considered handled)</label>
-      <input id="excludeStates" value="Ready for Review, Closed">
+      <input id="org"><input id="project"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
     </div>
 
-    <div class="actions">
-      <button id="loadBtn" onclick="loadReview()">Load Review</button>
-      <label class="checkbox"><input type="checkbox" id="remember"> Remember org/project on this device (not the token)</label>
+    <div class="actions" style="margin-bottom:2px">
+      <button id="loadBtn" onclick="loadReview()">Refresh Review</button>
       <label class="checkbox"><input type="checkbox" id="hideRecent" onchange="rerender()"> Hide trackers touched in the last <input id="recentHours" type="number" value="4" min="0" style="width:44px;padding:2px 4px;margin:0 4px"> hours</label>
       <span id="status"></span>
     </div>
+
+    <details class="config-details full" style="grid-column:1/-1">
+      <summary>Report options</summary>
+      <div class="field" style="max-width:520px">
+        <label>Exclude states from "needing attention" (comma-separated — trackers already in these states are considered handled)</label>
+        <input id="excludeStates" value="Ready for Review, Closed">
+      </div>
+    </details>
   </div>
 
   <div id="error"></div>
@@ -755,6 +741,14 @@ async function copyList() {
 
 restoreConfig();
 loadProfiles();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', pat: 'pat' });
+  loadReview();
+})();
 </script>
+</div>
 </body>
 </html>
