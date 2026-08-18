@@ -9,12 +9,14 @@ const ADONav = (function () {
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>' },
     { key: 'tracker', href: 'master-tracker-review.html', label: 'Master Tracker Review',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' },
-    { key: 'capacity', href: 'team-capacity-planner.html', label: 'Team Capacity Planner',
-      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15l2 2 4-4"/></svg>' },
+    { key: 'weekly', href: 'weekly-team-report.html', label: 'Weekly Team Report',
+      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>' },
     { key: 'client', href: 'client-investigation.html', label: 'Client Investigation',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' },
     { key: 'leaderboard', href: 'leaderboard.html', label: 'Leaderboard',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a2 2 0 0 0 2 4M17 6h3a2 2 0 0 1-2 4"/></svg>' },
+    { key: 'cims', href: 'cims-compare.html', label: 'CIMS vs DevOps',
+      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 7h5a2 2 0 0 1 2 2v3M11 17H6a2 2 0 0 1-2-2v-3"/></svg>' },
   ];
 
   function escapeHtml(s) {

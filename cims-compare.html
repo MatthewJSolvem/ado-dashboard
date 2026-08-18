@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CIMS vs DevOps Status Check</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.17.0/lib/msal-browser.min.js"></script>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .config .field { display: flex; flex-direction: column; gap: 4px; }
+  .config label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .config input, .config select { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+                  color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  .config input:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .config .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .config .full { grid-column: 1 / -1; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); box-shadow: none; }
+  button.secondary:hover { background: #eef0fb; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #pbi-status { font-size: 12px; color: var(--muted); }
+  #pbi-status.connected { color: var(--good); font-weight: 600; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat.bad { border-left-color: var(--bad); }
+  .stat.warn { border-left-color: var(--warn); }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+</style>
+</head>
+<body>
+<script>ADONav.render('cims');</script>
+<div class="app-main">
+
+  <h1>CIMS vs DevOps Status Check</h1>
+  <div class="subtitle">Compares ticket status between the CIMS Power BI tracker (what the client sees) and Azure DevOps (what the team works from), matched by TMT/Defect ID. Flags anything closed on one side but not the other.</div>
+
+  <div class="config">
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="pat" type="password">
+    </div>
+
+    <div class="field">
+      <label>CIMS period start</label>
+      <input id="periodStart" type="date" value="2025-11-01">
+    </div>
+    <div class="field">
+      <label>CIMS period end (exclusive)</label>
+      <input id="periodEnd" type="date" value="2025-12-01">
+    </div>
+
+    <div class="actions">
+      <button id="pbiConnectBtn" class="secondary" onclick="connectPowerBI()">Connect to Power BI</button>
+      <span id="pbi-status">Not connected</span>
+      <button id="runBtn" onclick="runComparison()" disabled>Run Comparison</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="error"></div>
+
+  <div class="grid" id="stats" style="display:none">
+    <div class="stat"><div class="num" id="stat-cims">0</div><div class="label">CIMS tickets (period)</div></div>
+    <div class="stat"><div class="num" id="stat-matched">0</div><div class="label">Matched to DevOps</div></div>
+    <div class="stat bad"><div class="num" id="stat-mismatch">0</div><div class="label">Status mismatches</div></div>
+    <div class="stat warn"><div class="num" id="stat-unmatched">0</div><div class="label">No DevOps match found</div></div>
+  </div>
+
+  <section id="sec-mismatch" style="display:none">
+    <h2>Status mismatches</h2>
+    <div class="meta">
+      <span>Closed on one side but not the other — these are what the client could be seeing incorrectly.</span>
+      <button class="secondary" onclick="exportCsv('mismatch')">Export CSV</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>TMT / Defect ID</th><th>CIMS Status</th><th>DevOps State</th><th>Mismatch</th><th>DevOps Item</th></tr></thead>
+      <tbody id="rows-mismatch"></tbody>
+    </table></div>
+  </section>
+
+  <section id="sec-unmatched" style="display:none">
+    <h2>CIMS tickets with no matching DevOps item</h2>
+    <div class="meta">
+      <span>Either the TMT number is missing/incorrect in DevOps, or the work item doesn't exist under that ID.</span>
+      <button class="secondary" onclick="exportCsv('unmatched')">Export CSV</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>TMT / Defect ID</th><th>CIMS Status</th></tr></thead>
+      <tbody id="rows-unmatched"></tbody>
+    </table></div>
+  </section>
+
+  <section id="sec-ok" style="display:none">
+    <h2>Aligned tickets</h2>
+    <div class="meta"><span>Matched and status agrees on both sides — no action needed.</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>TMT / Defect ID</th><th>CIMS Status</th><th>DevOps State</th><th>DevOps Item</th></tr></thead>
+      <tbody id="rows-ok"></tbody>
+    </table></div>
+  </section>
+
+</div>
+
+<script>
+// ==== fixed configuration for this deployment ====
+const PBI_CLIENT_ID   = '6a32c59a-5ca3-4a1d-91cc-7059413c5697';
+const PBI_TENANT_ID   = '55da4f8b-3269-4f3a-8348-60b5265b39e6';
+const PBI_WORKSPACE_ID = 'b6e585e3-be73-4ff4-940d-9605620682ed';
+const PBI_DATASET_ID  = '6651d88d-78d8-4cd9-9fc8-3540a56a0282';
+const PBI_TABLE       = 'CimsMis';
+const PBI_DEFECT_COL  = 'DefectID';
+const PBI_STATUS_COL  = 'Status';
+const PBI_DATE_COL    = 'date logged';
+const PBI_CLOSED_VALUES = ['closed'];
+const PBI_SCOPES = ['https://analysis.windows.net/powerbi/api/Dataset.Read.All'];
+const ADO_TMT_FIELD_CANDIDATES = ['TMT number', 'TMT Number', 'TMT No', 'TMT ID', 'TMT'];
+
+let workItemBaseUrl = '';
+let lastResults = null; // { mismatch: [], unmatched: [], ok: [] }
+
+// ---- shared login: pull org/project/pat from the session set on the login screen ----
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', pat: 'pat' });
+})();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+// ---- Azure DevOps helpers (same pattern as the other report pages) ----
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+function field(item, name, def = '') {
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+async function discoverFieldReferenceName(projectBase, workItemType, displayNameCandidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = displayNameCandidates.map(c => c.toLowerCase());
+    const match = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return match ? match.referenceName : null;
+  } catch (e) { return null; }
+}
+const LITERAL_COMPLETED_STATES = ['closed', 'done'];
+function resolveCategory(typeStateMap, wit, state) {
+  const sLower = (state || '').toLowerCase();
+  if (LITERAL_COMPLETED_STATES.includes(sLower)) return 'Completed';
+  return (typeStateMap[wit] || {})[state] || '';
+}
+function isDevOpsClosed(typeStateMap, item) {
+  return resolveCategory(typeStateMap, field(item, 'System.WorkItemType'), field(item, 'System.State')) === 'Completed';
+}
+function normalizeId(v) {
+  return String(v || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// ---- Power BI (MSAL + Execute Queries) ----
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: PBI_CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${PBI_TENANT_ID}`,
+    redirectUri: window.location.href.split('?')[0].split('#')[0],
+  },
+  cache: { cacheLocation: 'sessionStorage' },
+});
+
+async function connectPowerBI() {
+  clearError();
+  try {
+    const result = await msalInstance.loginPopup({ scopes: PBI_SCOPES });
+    msalInstance.setActiveAccount(result.account);
+    document.getElementById('pbi-status').textContent = `Connected as ${result.account.username}`;
+    document.getElementById('pbi-status').classList.add('connected');
+    document.getElementById('runBtn').disabled = false;
+  } catch (err) {
+    showError(`<strong>Power BI sign-in failed.</strong><br>${(err && err.message) ? err.message.replace(/</g,'&lt;') : 'Unknown error'}`);
+  }
+}
+async function getPbiToken() {
+  const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
+  if (!account) throw new Error('Not connected to Power BI — click "Connect to Power BI" first.');
+  try {
+    const result = await msalInstance.acquireTokenSilent({ scopes: PBI_SCOPES, account });
+    return result.accessToken;
+  } catch (e) {
+    const result = await msalInstance.acquireTokenPopup({ scopes: PBI_SCOPES, account });
+    return result.accessToken;
+  }
+}
+function daxDateParts(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return `DATE(${y},${m},${d})`;
+}
+async function fetchCimsRows(startDateStr, endDateStr) {
+  const token = await getPbiToken();
+  const dax = `EVALUATE SELECTCOLUMNS(FILTER('${PBI_TABLE}', '${PBI_TABLE}'[${PBI_DATE_COL}] >= ${daxDateParts(startDateStr)} && '${PBI_TABLE}'[${PBI_DATE_COL}] < ${daxDateParts(endDateStr)}), "DefectID", '${PBI_TABLE}'[${PBI_DEFECT_COL}], "Status", '${PBI_TABLE}'[${PBI_STATUS_COL}])`;
+  const res = await fetch(`https://api.powerbi.com/v1.0/myorg/groups/${PBI_WORKSPACE_ID}/datasets/${PBI_DATASET_ID}/executeQueries`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ queries: [{ query: dax }], serializerSettings: { includeNulls: true } }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try { const j = await res.json(); detail = j.error ? (j.error.message || JSON.stringify(j.error)) : JSON.stringify(j); }
+    catch (e) { detail = await res.text().catch(() => ''); }
+    const e = new Error(`PBI_HTTP_${res.status}`);
+    e.detail = detail;
+    throw e;
+  }
+  const data = await res.json();
+  const rows = (((data.results || [])[0] || {}).tables || [])[0]?.rows || [];
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    const defectKey = keys.find(k => k.toLowerCase().includes('defectid')) || keys[0];
+    const statusKey = keys.find(k => k.toLowerCase().includes('status')) || keys[1];
+    return { defectId: String(r[defectKey] ?? '').trim(), status: String(r[statusKey] ?? '').trim() };
+  }).filter(r => r.defectId);
+}
+
+// ---- main flow ----
+async function runComparison() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const periodStart = document.getElementById('periodStart').value;
+  const periodEnd = document.getElementById('periodEnd').value;
+
+  if (!org || !project || !pat) { showError('No Azure DevOps connection found — go to the login screen and reconnect.'); return; }
+  if (!periodStart || !periodEnd) { showError('Set both a start and end date for the CIMS period.'); return; }
+
+  ['sec-mismatch', 'sec-unmatched', 'sec-ok', 'stats'].forEach(id => document.getElementById(id).style.display = 'none');
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  ADOLoader.show('Pulling CIMS data from Power BI…');
+  setStatus('Pulling CIMS data from Power BI…');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    const cimsRows = await fetchCimsRows(periodStart, periodEnd);
+    if (!cimsRows.length) { showError('Power BI returned no CIMS rows for that period — double check the date range and that the dataset has data for it.'); setStatus(''); btn.disabled = false; return; }
+
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+
+    setStatus('Looking up the TMT number field...');
+    let tmtField = null;
+    for (const t of witTypes) {
+      const found = await discoverFieldReferenceName(projectBase, t, ADO_TMT_FIELD_CANDIDATES);
+      if (found) { tmtField = found; break; }
+    }
+    if (!tmtField) { showError('Could not find a "TMT number" field on any work item type in this project — check the field\'s exact display name.'); setStatus(''); btn.disabled = false; return; }
+
+    setStatus('Pulling matching DevOps items...');
+    let ids = [];
+    try {
+      const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}' AND [${tmtField}] <> ''`, 'TMT lookup');
+      ids = result.workItems.map(w => w.id);
+    } catch (e) {
+      showError('Could not query DevOps for the TMT field — it may not be a queryable text field type.'); setStatus(''); btn.disabled = false; return;
+    }
+    const devopsItems = await getItems(base, ids, ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', tmtField, 'System.ChangedDate']);
+
+    // index DevOps items by normalized TMT value for matching
+    const byTmt = new Map();
+    devopsItems.forEach(it => {
+      const key = normalizeId(field(it, tmtField));
+      if (key) byTmt.set(key, it);
+    });
+
+    const mismatch = [], unmatched = [], ok = [];
+    cimsRows.forEach(row => {
+      const key = normalizeId(row.defectId);
+      const item = byTmt.get(key);
+      const cimsClosed = PBI_CLOSED_VALUES.includes(row.status.toLowerCase());
+      if (!item) {
+        unmatched.push(row);
+        return;
+      }
+      const devopsClosed = isDevOpsClosed(typeStateMap, item);
+      const rowData = { defectId: row.defectId, cimsStatus: row.status, devopsState: field(item, 'System.State'), id: item.id };
+      if (cimsClosed !== devopsClosed) {
+        rowData.direction = devopsClosed ? 'Closed in DevOps, open in CIMS' : 'Closed in CIMS, open in DevOps';
+        mismatch.push(rowData);
+      } else {
+        ok.push(rowData);
+      }
+    });
+
+    lastResults = { mismatch, unmatched, ok };
+    renderResults(cimsRows.length, mismatch, unmatched, ok);
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('DevOps authentication failed — check the PAT has "Work Items (Read)" scope and hasn\'t expired.');
+    } else if (err.message && err.message.startsWith('PBI_HTTP')) {
+      showError(`<strong>Power BI rejected the request (${err.message.replace('PBI_HTTP_', '')}).</strong><br>${(err.detail || '').toString().replace(/</g,'&lt;')}<br><br>Common causes: the signed-in account doesn't have Build permission on the dataset, or the workspace/dataset ID is wrong.`);
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      showError(`<strong>${err.message.replace('HTTP_', 'HTTP ')} from Azure DevOps.</strong><br>${(err.detail || '').toString().replace(/</g,'&lt;')}`);
+    } else {
+      showError('Something went wrong: ' + (err.message || err));
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function idLink(id) {
+  return `<a href="${workItemBaseUrl}${id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${id}</a>`;
+}
+function renderResults(cimsCount, mismatch, unmatched, ok) {
+  document.getElementById('stats').style.display = 'grid';
+  document.getElementById('stat-cims').textContent = cimsCount;
+  document.getElementById('stat-matched').textContent = mismatch.length + ok.length;
+  document.getElementById('stat-mismatch').textContent = mismatch.length;
+  document.getElementById('stat-unmatched').textContent = unmatched.length;
+
+  document.getElementById('sec-mismatch').style.display = 'block';
+  document.getElementById('rows-mismatch').innerHTML = mismatch.length
+    ? mismatch.map(r => `<tr><td>${r.defectId}</td><td><span class="badge">${r.cimsStatus}</span></td><td><span class="badge">${r.devopsState}</span></td><td><span class="badge badge-bad">${r.direction}</span></td><td>${idLink(r.id)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No mismatches found</td></tr>';
+
+  document.getElementById('sec-unmatched').style.display = 'block';
+  document.getElementById('rows-unmatched').innerHTML = unmatched.length
+    ? unmatched.map(r => `<tr><td>${r.defectId}</td><td><span class="badge">${r.status}</span></td></tr>`).join('')
+    : '<tr><td colspan="2" class="empty">Every CIMS ticket matched a DevOps item</td></tr>';
+
+  document.getElementById('sec-ok').style.display = 'block';
+  document.getElementById('rows-ok').innerHTML = ok.length
+    ? ok.map(r => `<tr><td>${r.defectId}</td><td><span class="badge badge-good">${r.cimsStatus}</span></td><td><span class="badge badge-good">${r.devopsState}</span></td><td>${idLink(r.id)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Nothing here</td></tr>';
+}
+
+function exportCsv(which) {
+  if (!lastResults) return;
+  let rows, header;
+  if (which === 'mismatch') {
+    header = ['TMT/Defect ID', 'CIMS Status', 'DevOps State', 'Mismatch', 'DevOps ID'];
+    rows = lastResults.mismatch.map(r => [r.defectId, r.cimsStatus, r.devopsState, r.direction, r.id]);
+  } else {
+    header = ['TMT/Defect ID', 'CIMS Status'];
+    rows = lastResults.unmatched.map(r => [r.defectId, r.status]);
+  }
+  const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cims-devops-${which}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
