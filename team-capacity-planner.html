@@ -109,7 +109,7 @@
       <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
       <div class="field">
         <label>Team to analyze</label>
-        <select id="teamChoice">
+        <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
           <option value="Dev">Dev</option>
           <option value="QA">QA</option>
           <option value="Analysis">Analysis</option>
@@ -127,6 +127,7 @@
     <details class="config-details">
       <summary>Planning options</summary>
       <div class="config-grid">
+        <div class="field"><label>Work item types to include (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
         <div class="field"><label>Throughput lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
         <div class="field"><label>Default weekly capacity (if no history)</label><input id="defaultCapacity" type="number" value="6" min="1"></div>
         <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
@@ -218,6 +219,19 @@ let severityFieldRef = null;
 let typeStateMapGlobal = {};
 let lastState = null; // everything the render functions need, kept for copyReport()
 
+// Per-team default scope — only meaningful because "who counts as this
+// team" isn't just area path; different disciplines work different types
+// (devs: Bug/Task, QA: Bug/Test Case, etc). Only auto-fills when the field
+// still matches a previous default, so a manual edit isn't clobbered.
+const DEFAULT_TYPES_BY_TEAM = { Dev: 'Bug, Task', QA: 'Bug, Test Case', Analysis: '' };
+function applyDefaultWorkItemTypes() {
+  const el = document.getElementById('workItemTypes');
+  const allDefaults = Object.values(DEFAULT_TYPES_BY_TEAM);
+  if (!el.value.trim() || allDefaults.includes(el.value.trim())) {
+    el.value = DEFAULT_TYPES_BY_TEAM[document.getElementById('teamChoice').value] || '';
+  }
+}
+
 // ---- restore shared config ----
 (function restoreConfig() {
   const raw = storage.get('ado-config');
@@ -244,6 +258,7 @@ let lastState = null; // everything the render functions need, kept for copyRepo
   const savedChoice = storage.get('ado-capacity-teamchoice');
   if (savedChoice) document.getElementById('teamChoice').value = savedChoice;
   const savedOptions = storage.get('ado-capacity-options');
+  let restoredTypes = false;
   if (savedOptions) {
     try {
       const o = JSON.parse(savedOptions);
@@ -254,8 +269,12 @@ let lastState = null; // everything the render functions need, kept for copyRepo
       if (o.criticalSeverityKeyword) document.getElementById('criticalSeverityKeyword').value = o.criticalSeverityKeyword;
       if (o.weeksForward) document.getElementById('weeksForward').value = o.weeksForward;
       if (o.createdAfter) document.getElementById('createdAfter').value = o.createdAfter;
+      if (o.workItemTypes != null) { document.getElementById('workItemTypes').value = o.workItemTypes; restoredTypes = true; }
     } catch (e) {}
   }
+  // if there's a remembered team choice but no saved type filter yet, make
+  // sure the type field actually matches that team's default (not Dev's)
+  if (savedChoice && !restoredTypes) applyDefaultWorkItemTypes();
 })();
 
 (function () {
@@ -430,15 +449,34 @@ function classifyUrgency(it, criticalPriority, criticalSeverityKeyword) {
   return { priorityRaw, severityRaw, priorityWeight, severityWeight, urgencyScore, critical };
 }
 
+// Criticals first, always — used to order every table/list on the page so
+// "deal with criticals first" holds everywhere, not just in scheduling.
+function sortCriticalFirst(list, secondary) {
+  return list.sort((a, b) => {
+    const aCrit = a.urgency.critical ? 1 : 0;
+    const bCrit = b.urgency.critical ? 1 : 0;
+    if (aCrit !== bCrit) return bCrit - aCrit;
+    if (secondary) return secondary(a, b);
+    if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
+    return (b.age || 0) - (a.age || 0);
+  });
+}
+
 function weekMonday(idx) {
   const now = new Date();
   const daysSinceMonday = (now.getDay() + 6) % 7;
   const mondayThisWeek = new Date(now.getTime() - daysSinceMonday * 86400000);
   return new Date(mondayThisWeek.getTime() + idx * 7 * 86400000);
 }
+// Heading date is the Saturday of that calendar week (Monday + 5 days) —
+// the week's actual Mon–Sun boundaries (weekMonday/weekRange) are unchanged
+// and still drive scheduling and the sprint-overlap check; only the date
+// shown in the heading text changes.
+function weekSaturday(idx) {
+  return new Date(weekMonday(idx).getTime() + 5 * 86400000);
+}
 function weekLabel(idx) {
-  const target = weekMonday(idx);
-  const dateStr = target.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+  const dateStr = weekSaturday(idx).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
   if (idx === 0) return `This week (${dateStr})`;
   if (idx === 1) return `Next week (${dateStr})`;
   return `Week of ${dateStr}`;
@@ -522,6 +560,7 @@ async function loadCapacity() {
   const criticalSeverityKeyword = document.getElementById('criticalSeverityKeyword').value.trim();
   const weeksForward = Math.max(1, parseInt(document.getElementById('weeksForward').value, 10) || 8);
   const createdAfter = document.getElementById('createdAfter').value; // 'YYYY-MM-DD' or ''
+  const workItemTypes = document.getElementById('workItemTypes').value.split(',').map(t => t.trim()).filter(Boolean);
 
   if (!org || !project || !pat || !teamName) {
     showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
@@ -534,7 +573,7 @@ async function loadCapacity() {
     storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project }));
   }
   storage.set('ado-capacity-teamchoice', teamChoice);
-  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter }));
+  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter, workItemTypes: document.getElementById('workItemTypes').value }));
 
   const btn = document.getElementById('loadBtn');
   btn.disabled = true;
@@ -582,12 +621,16 @@ async function loadCapacity() {
     }
 
     const createdClause = createdAfter ? `AND [System.CreatedDate] >= '${createdAfter}'` : '';
+    const typeClause = workItemTypes.length
+      ? `AND [System.WorkItemType] IN (${workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})`
+      : '';
 
     setStatus('Fetching all open items for this team...');
     const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND ${areaClause}
               ${createdClause}
+              ${typeClause}
               ORDER BY [System.CreatedDate] ASC`, 'Open items for team');
     const allTeamItems = await getItems(base, openWiql.workItems.map(w => w.id), fields);
     const allOpenItems = allTeamItems.filter(isOpenItem);
@@ -598,6 +641,7 @@ async function loadCapacity() {
               WHERE [System.TeamProject] = '${project}'
               AND ${areaClause}
               ${createdClause}
+              ${typeClause}
               AND [System.ChangedDate] >= @Today - ${lookbackDays}
               ORDER BY [System.ChangedDate] DESC`, 'Recently changed items for team');
     const recentChangedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
@@ -623,13 +667,15 @@ async function loadCapacity() {
                 WHERE [System.TeamProject] = '${project}'
                 AND ${areaClause}
                 ${createdClause}
+                ${typeClause}
                 AND [System.IterationPath] IN (${pathsClause})
                 ORDER BY [System.IterationPath] ASC`, 'Items in past sprints');
       const carryRaw = await getItems(base, carryWiql.workItems.map(w => w.id), fields);
       carryoverItems = carryRaw.filter(isOpenItem).filter(it => !isUnallocatedPoolPath(field(it, 'System.IterationPath'))).map(it => {
         const iterPath = field(it, 'System.IterationPath');
         const iter = iterationByPath[iterPath];
-        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null };
+        const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null, urgency };
       });
     }
 
@@ -718,6 +764,12 @@ function computeAndRender() {
     const assignee = field(it, 'System.AssignedTo', '') || null;
     return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')), since: p.since, approx: p.approx };
   });
+
+  // Criticals lead everywhere they're listed — every table below reads
+  // from these two arrays (or from carryoverItems, sorted the same way in
+  // renderCarryover), so sorting once here keeps that consistent everywhere.
+  sortCriticalFirst(scored);
+  sortCriticalFirst(scoredPool);
 
   // Per-person throughput from completed items in the lookback window.
   const byPerson = {};
@@ -938,9 +990,9 @@ function renderPool(scoredPool) {
   const sec = document.getElementById('sec-pool');
   sec.style.display = scoredPool.length ? 'block' : 'none';
   if (!scoredPool.length) return;
-  const sorted = scoredPool.slice().sort((a, b) => (daysAgo(a.since) ?? -1) < (daysAgo(b.since) ?? -1) ? 1 : -1);
+  const sorted = sortCriticalFirst(scoredPool.slice(), (a, b) => (daysAgo(a.since) ?? -1) < (daysAgo(b.since) ?? -1) ? 1 : -1);
   document.getElementById('meta-pool').textContent =
-    `${sorted.length} item(s) in the Unallocated Pool, sorted by longest-sitting first. "Days in pool" is when we last saw an item's iteration set to Unallocated Pool; where that history couldn't be checked, it falls back to the item's created date (marked ~).`;
+    `${sorted.length} item(s) in the Unallocated Pool — critical items first, then longest-sitting first. "Days in pool" is when we last saw an item's iteration set to Unallocated Pool; where that history couldn't be checked, it falls back to the item's created date (marked ~).`;
   document.getElementById('rows-pool').innerHTML = sorted.map(s => {
     const it = s.item;
     const idCell = workItemBaseUrl
@@ -1022,17 +1074,23 @@ function renderUnassigned(unassigned) {
 function renderCarryover(carryoverItems) {
   const sec = document.getElementById('sec-carryover');
   sec.style.display = 'block';
+  const sorted = sortCriticalFirst(carryoverItems.slice(), (a, b) => {
+    const aOverdue = a.finishDate ? daysAgo(a.finishDate) : -1;
+    const bOverdue = b.finishDate ? daysAgo(b.finishDate) : -1;
+    return bOverdue - aOverdue;
+  });
   document.getElementById('meta-carryover').textContent =
-    `${carryoverItems.length} open item(s) left over from sprint(s) that have already ended.`;
-  document.getElementById('rows-carryover').innerHTML = carryoverItems.length
-    ? carryoverItems.map(c => {
+    `${sorted.length} open item(s) left over from sprint(s) that have already ended — critical items first, then longest overdue first.`;
+  document.getElementById('rows-carryover').innerHTML = sorted.length
+    ? sorted.map(c => {
         const it = c.item;
         const idCell = workItemBaseUrl
           ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
           : `#${it.id}`;
         const overdue = c.finishDate ? daysAgo(c.finishDate) : null;
+        const critBadge = c.urgency && c.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
         return `<tr>
-          <td>${idCell}</td><td>${field(it, 'System.Title')}</td>
+          <td>${idCell}</td><td>${field(it, 'System.Title')}${critBadge}</td>
           <td><span class="badge">${field(it, 'System.State')}</span></td>
           <td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
           <td>${c.iterationName}</td>
