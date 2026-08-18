@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Team Capacity Planner</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 24px; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  input, select, textarea { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+         color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 18px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 7px 10px; font-size: 12px; text-transform: none; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  details.config-details { margin-top: 14px; }
+  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent); font-weight: 600; }
+  details.config-details .config-grid { margin-top: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat.stat-bad { border-left-color: var(--bad); }
+  .stat.stat-warn { border-left-color: var(--warn); }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .banner { border-radius: 2px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+  .banner-critical { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; }
+  .banner-critical h3 { margin: 0 0 8px 0; font-size: 14px; }
+  .banner-critical ul { margin: 0; padding-left: 20px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge-muted { background: #eceff1; color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .age-green { color: var(--good); font-weight: 700; }
+  .age-amber { color: var(--warn); font-weight: 700; }
+  .age-red { color: var(--bad); font-weight: 700; }
+  .week-group { margin-bottom: 18px; }
+  .week-group:last-child { margin-bottom: 0; }
+  .week-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .week-head h3 { font-size: 13px; margin: 0; font-weight: 700; }
+  .week-head .cap-note { font-size: 12px; color: var(--muted); }
+  .person-card { border: 1px solid var(--border); border-radius: 2px; padding: 14px; margin-bottom: 12px; }
+  .person-card:last-child { margin-bottom: 0; }
+  .person-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .person-name { font-weight: 700; font-size: 14px; }
+  .person-meta { font-size: 12px; color: var(--muted); }
+  .wip-bar-track { background: #eceff1; border-radius: 3px; height: 8px; width: 100%; overflow: hidden; margin-top: 6px; }
+  .wip-bar-fill { height: 100%; background: var(--accent); }
+  .wip-bar-fill.over { background: var(--bad); }
+  .complexity-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+</style>
+</head>
+<body>
+<script>ADONav.render('capacity');</script>
+<div class="app-main">
+
+  <h1>Team Capacity Planner</h1>
+  <div class="subtitle">Pick a team to see everything currently open, a suggested week for each item based on priority/severity/complexity and each person's real throughput, anything still open in sprints that have already ended, and WIP per person.</div>
+
+  <div class="config">
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
+    </div>
+    <div class="config-grid">
+      <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+      <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
+      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
+      <div class="field">
+        <label>Team to analyze</label>
+        <select id="teamChoice">
+          <option value="Dev">Dev</option>
+          <option value="QA">QA</option>
+          <option value="Analysis">Analysis</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="loadBtn" onclick="loadCapacity()">Analyze Team</button>
+      <button type="button" class="small" onclick="copyReport()">Copy summary report</button>
+      <span id="status"></span>
+      <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+
+    <details class="config-details">
+      <summary>Planning options</summary>
+      <div class="config-grid">
+        <div class="field"><label>Throughput lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
+        <div class="field"><label>Default weekly capacity (if no history)</label><input id="defaultCapacity" type="number" value="6" min="1"></div>
+        <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
+        <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
+        <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
+        <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="error"></div>
+
+  <div id="banner-critical" class="banner banner-critical" style="display:none">
+    <h3>⚠ Critical items bypassing the capacity queue</h3>
+    <div class="meta" id="banner-critical-meta" style="margin-bottom:8px"></div>
+    <ul id="banner-critical-list"></ul>
+  </div>
+
+  <div id="overview-stats" class="grid" style="display:none"></div>
+
+  <section id="sec-wip" style="display:none">
+    <h2>WIP per person</h2>
+    <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
+    <div id="wip-cards"></div>
+  </section>
+
+  <section id="sec-open" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>All open items</h2>
+      <div class="field" style="min-width:200px">
+        <label>Filter by assignee</label>
+        <select id="openAssigneeFilter" onchange="renderOpenTable()"><option value="">All</option></select>
+      </div>
+    </div>
+    <div class="meta" id="meta-open"></div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+      <th>Complexity</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th>
+    </tr></thead>
+    <tbody id="rows-open"></tbody></table></div>
+  </section>
+
+  <section id="sec-weeks" style="display:none">
+    <h2>Suggested sprint-week allocation</h2>
+    <div class="meta">Non-critical items are queued per person, oldest/highest-urgency first, filling each person's estimated weekly capacity before spilling into the next week. Critical items (see banner above) are always slotted into this week, on top of this queue.</div>
+    <div id="week-groups"></div>
+  </section>
+
+  <section id="sec-unassigned" style="display:none">
+    <h2>Unassigned — needs an owner</h2>
+    <div class="meta">Open items with nobody assigned can't be scheduled into a person's week until someone owns them.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>Age (d)</th>
+    </tr></thead>
+    <tbody id="rows-unassigned"></tbody></table></div>
+  </section>
+
+  <section id="sec-carryover" style="display:none">
+    <h2>Open items in sprints that have already ended</h2>
+    <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th>
+    </tr></thead>
+    <tbody id="rows-carryover"></tbody></table></div>
+  </section>
+
+</div>
+
+<script>
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+let workItemBaseUrl = '';
+let priorityFieldRef = null;
+let severityFieldRef = null;
+let typeStateMapGlobal = {};
+let lastState = null; // everything the render functions need, kept for copyReport()
+
+// ---- restore shared config ----
+(function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw);
+      document.getElementById('org').value = cfg.org || '';
+      document.getElementById('project').value = cfg.project || '';
+      document.getElementById('team').value = cfg.team || '';
+      if (cfg.org || cfg.project || cfg.team) document.getElementById('remember').checked = true;
+    } catch (e) {}
+  }
+  // reuse team names saved by the old weekly report page, if present, so
+  // nothing needs re-typing after that page was replaced by this one
+  const raw2 = storage.get('ado-capacity-teamnames') || storage.get('ado-team-report-teamnames');
+  if (raw2) {
+    try {
+      const a = JSON.parse(raw2);
+      document.getElementById('areaDev').value = a.dev || '';
+      document.getElementById('areaQA').value = a.qa || '';
+      document.getElementById('areaAnalysis').value = a.analysis || '';
+    } catch (e) {}
+  }
+  const savedChoice = storage.get('ado-capacity-teamchoice');
+  if (savedChoice) document.getElementById('teamChoice').value = savedChoice;
+  const savedOptions = storage.get('ado-capacity-options');
+  if (savedOptions) {
+    try {
+      const o = JSON.parse(savedOptions);
+      if (o.lookbackWeeks) document.getElementById('lookbackWeeks').value = o.lookbackWeeks;
+      if (o.defaultCapacity) document.getElementById('defaultCapacity').value = o.defaultCapacity;
+      if (o.wipLimit) document.getElementById('wipLimit').value = o.wipLimit;
+      if (o.criticalPriority) document.getElementById('criticalPriority').value = o.criticalPriority;
+      if (o.criticalSeverityKeyword) document.getElementById('criticalSeverityKeyword').value = o.criticalSeverityKeyword;
+      if (o.weeksForward) document.getElementById('weeksForward').value = o.weeksForward;
+    } catch (e) {}
+  }
+})();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+})();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+function field(item, name, def = '') {
+  if (!name) return def;
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+function ageClass(days) {
+  if (days == null) return '';
+  if (days < 7) return 'age-green';
+  if (days <= 21) return 'age-amber';
+  return 'age-red';
+}
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+async function discoverFieldReferenceName(projectBase, workItemType, displayNameCandidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = displayNameCandidates.map(c => c.toLowerCase());
+    const match = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return match ? match.referenceName : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Same literal-state belt-and-suspenders approach used on the other pages in
+// this console, since ADO's own state-category metadata has been wrong
+// before for this org (e.g. Bug's "Closed" state wasn't tagged Completed).
+const LITERAL_COMPLETED_STATES = ['closed', 'done'];
+const LITERAL_REMOVED_STATES = ['removed'];
+function resolveCategory(typeStateMap, wit, state) {
+  const sLower = (state || '').toLowerCase();
+  if (LITERAL_COMPLETED_STATES.includes(sLower)) return 'Completed';
+  if (LITERAL_REMOVED_STATES.includes(sLower)) return 'Removed';
+  return (typeStateMap[wit] || {})[state] || '';
+}
+function isOpenItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  return cat !== 'Completed' && cat !== 'Removed';
+}
+function isInProgressItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  return cat === 'InProgress';
+}
+function buildAreaClause(teamFieldValues) {
+  if (!teamFieldValues || !teamFieldValues.values || !teamFieldValues.values.length) return null;
+  const parts = teamFieldValues.values.map(v => {
+    const esc = v.value.replace(/'/g, "''");
+    return v.includeChildren ? `[System.AreaPath] UNDER '${esc}'` : `[System.AreaPath] = '${esc}'`;
+  });
+  return `(${parts.join(' OR ')})`;
+}
+
+// ---------------------------------------------------------------------
+// Complexity heuristic — no story-points-style field exists on this
+// project, so this reads the title, description, and (if present) a
+// client field, and scores complexity from keyword patterns + length.
+// This is a heuristic estimate, not a guarantee — shown with its reasons
+// so it can be sanity-checked at a glance.
+// ---------------------------------------------------------------------
+const HIGH_COMPLEXITY_KEYWORDS = [
+  'migration', 'migrate', 'integration', 'integrate', 'multiple systems', 'cross-team', 'cross team',
+  'architecture', 'refactor', 'legacy', 'redesign', 'rewrite', 'breaking change', 'root cause',
+  'investigate', 'investigation', 'unclear', 'tbd', 'to be confirmed', 'several teams', 'many systems',
+  'complex', 'scalability', 'security', 'data loss', 'corruption', 'dependency', 'dependencies',
+  'cross-browser', 'multiple environments', 'end-to-end', 'end to end', 'race condition', 'concurrency',
+  'performance issue', 'multiple modules', 'third-party', 'third party', 'backwards compatib',
+];
+const LOW_COMPLEXITY_KEYWORDS = [
+  'typo', 'label change', 'text change', 'copy update', 'wording', 'cosmetic', 'one-line', 'one line',
+  'css tweak', 'rename', 'small fix', 'minor', 'simple', 'quick fix', 'straightforward', 'color change',
+  'spelling', 'align', 'spacing',
+];
+function computeComplexity(title, description, client) {
+  const desc = stripHtml(description);
+  const text = `${title || ''} ${desc} ${client || ''}`.toLowerCase();
+  let highHits = 0, lowHits = 0;
+  const reasons = [];
+  HIGH_COMPLEXITY_KEYWORDS.forEach(k => { if (text.includes(k)) { highHits++; reasons.push(`+ "${k}"`); } });
+  LOW_COMPLEXITY_KEYWORDS.forEach(k => { if (text.includes(k)) { lowHits++; reasons.push(`- "${k}"`); } });
+  const lengthScore = Math.min(3, desc.length / 400);
+  let score = 1 + lengthScore + (highHits * 2) - (lowHits * 1.5);
+  const thin = desc.length < 20;
+  if (thin) reasons.push('description too thin to assess confidently');
+  score = Math.max(0.5, Math.min(10, score));
+  const label = score <= 3 ? 'Low' : score <= 6 ? 'Medium' : 'High';
+  return { score: Math.round(score * 10) / 10, label, reasons, thin };
+}
+function complexityColor(label) {
+  return label === 'High' ? 'var(--bad)' : label === 'Medium' ? 'var(--warn)' : 'var(--good)';
+}
+
+// ---------------------------------------------------------------------
+// Urgency (priority + severity) — also drives the critical override.
+// ---------------------------------------------------------------------
+function parseLeadingNumber(str) {
+  const m = String(str || '').match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function classifyUrgency(it, criticalPriority, criticalSeverityKeyword) {
+  const priorityRaw = field(it, priorityFieldRef, '');
+  const severityRaw = field(it, severityFieldRef, '');
+  const priorityNum = parseLeadingNumber(priorityRaw);
+  const severityNum = parseLeadingNumber(severityRaw);
+  const priorityWeight = priorityNum != null ? Math.max(0, 5 - priorityNum) : 2;
+  const severityWeight = severityNum != null ? Math.max(0, 5 - severityNum) : 2;
+  const severityIsCriticalWord = criticalSeverityKeyword &&
+    String(severityRaw).toLowerCase().includes(criticalSeverityKeyword.toLowerCase());
+  const priorityIsCritical = priorityNum != null && priorityNum <= criticalPriority;
+  const critical = priorityIsCritical || severityIsCriticalWord;
+  const urgencyScore = priorityWeight * 2 + severityWeight * 1.5;
+  return { priorityRaw, severityRaw, priorityWeight, severityWeight, urgencyScore, critical };
+}
+
+function weekLabel(idx) {
+  const now = new Date();
+  const daysSinceMonday = (now.getDay() + 6) % 7;
+  const mondayThisWeek = new Date(now.getTime() - daysSinceMonday * 86400000);
+  const target = new Date(mondayThisWeek.getTime() + idx * 7 * 86400000);
+  const dateStr = target.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+  if (idx === 0) return `This week (${dateStr})`;
+  if (idx === 1) return `Next week (${dateStr})`;
+  return `Week of ${dateStr}`;
+}
+
+const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
+                'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath',
+                'System.Description'];
+
+async function loadCapacity() {
+  clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const remember = document.getElementById('remember').checked;
+  const areaDev = document.getElementById('areaDev').value.trim();
+  const areaQA = document.getElementById('areaQA').value.trim();
+  const areaAnalysis = document.getElementById('areaAnalysis').value.trim();
+  const teamChoice = document.getElementById('teamChoice').value;
+  const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
+  const teamName = teamMap[teamChoice];
+
+  const lookbackWeeks = Math.max(2, parseInt(document.getElementById('lookbackWeeks').value, 10) || 8);
+  const defaultCapacity = Math.max(0.5, parseFloat(document.getElementById('defaultCapacity').value) || 6);
+  const wipLimit = Math.max(1, parseInt(document.getElementById('wipLimit').value, 10) || 3);
+  const criticalPriority = parseInt(document.getElementById('criticalPriority').value, 10) || 1;
+  const criticalSeverityKeyword = document.getElementById('criticalSeverityKeyword').value.trim();
+  const weeksForward = Math.max(1, parseInt(document.getElementById('weeksForward').value, 10) || 8);
+
+  if (!org || !project || !pat || !teamName) {
+    showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
+    return;
+  }
+  if (remember) {
+    storage.set('ado-capacity-teamnames', JSON.stringify({ dev: areaDev, qa: areaQA, analysis: areaAnalysis }));
+    let existingConfig = {};
+    try { existingConfig = JSON.parse(storage.get('ado-config') || '{}'); } catch (e) {}
+    storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project }));
+  }
+  storage.set('ado-capacity-teamchoice', teamChoice);
+  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward }));
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const teamBase = `${base}/${project}/${encodeURIComponent(teamName)}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+    typeStateMapGlobal = typeStateMap;
+
+    setStatus('Looking up Priority / Severity fields...');
+    priorityFieldRef = null; severityFieldRef = null;
+    for (const t of witTypes) {
+      if (!priorityFieldRef) priorityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Priority']);
+      if (!severityFieldRef) severityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Severity']);
+      if (priorityFieldRef && severityFieldRef) break;
+    }
+    const fields = FIELDS.slice();
+    if (priorityFieldRef) fields.push(priorityFieldRef);
+    if (severityFieldRef) fields.push(severityFieldRef);
+
+    setStatus(`Looking up ${teamChoice} team's area path...`);
+    let teamFieldValues = null;
+    try {
+      teamFieldValues = await adoGet(`${teamBase}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`);
+    } catch (e) {
+      showError(`Couldn't find team "${teamName}" — check the exact team name (Project Settings → Teams).`);
+      setStatus(''); btn.disabled = false; return;
+    }
+    const areaClause = buildAreaClause(teamFieldValues);
+    if (!areaClause) {
+      showError(`Team "${teamName}" has no area path configured — nothing to scope this to.`);
+      setStatus(''); btn.disabled = false; return;
+    }
+
+    setStatus('Fetching all open items for this team...');
+    const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ORDER BY [System.CreatedDate] ASC`, 'Open items for team');
+    const allTeamItems = await getItems(base, openWiql.workItems.map(w => w.id), fields);
+    const openItems = allTeamItems.filter(isOpenItem);
+
+    setStatus('Fetching recent completions (for throughput)...');
+    const lookbackDays = lookbackWeeks * 7;
+    const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              AND [System.ChangedDate] >= @Today - ${lookbackDays}
+              ORDER BY [System.ChangedDate] DESC`, 'Recently changed items for team');
+    const recentChangedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
+    const completedInWindow = recentChangedItems.filter(it => {
+      const wit = field(it, 'System.WorkItemType');
+      const state = field(it, 'System.State');
+      return resolveCategory(typeStateMap, wit, state) === 'Completed';
+    });
+
+    setStatus('Looking up sprints...');
+    const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
+    const now = new Date();
+    const pastIterations = (allIterData.value || []).filter(it =>
+      it.attributes && it.attributes.finishDate && new Date(it.attributes.finishDate) < now);
+
+    let carryoverItems = [];
+    if (pastIterations.length) {
+      setStatus('Checking for open items in past sprints...');
+      const pathsClause = pastIterations.map(it => `'${it.path.replace(/'/g, "''")}'`).join(',');
+      const carryWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND ${areaClause}
+                AND [System.IterationPath] IN (${pathsClause})
+                ORDER BY [System.IterationPath] ASC`, 'Items in past sprints');
+      const carryRaw = await getItems(base, carryWiql.workItems.map(w => w.id), fields);
+      const iterByPath = {};
+      pastIterations.forEach(it => { iterByPath[it.path] = it; });
+      carryoverItems = carryRaw.filter(isOpenItem).map(it => {
+        const iterPath = field(it, 'System.IterationPath');
+        const iter = iterByPath[iterPath];
+        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null };
+      });
+    }
+
+    lastState = {
+      teamChoice, teamName, openItems, completedInWindow, carryoverItems, lookbackWeeks,
+      defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward,
+    };
+
+    setStatus('Scoring and scheduling...');
+    computeAndRender();
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — check the PAT has Work Items (Read) scope.');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const label = err.label ? `<strong>Step:</strong> ${err.label}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      showError(`<strong>${err.message.replace('HTTP_', 'HTTP ')}.</strong><br>${label}${detail}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Scoring + scheduling
+// ---------------------------------------------------------------------
+function computeAndRender() {
+  const { openItems, completedInWindow, carryoverItems, lookbackWeeks, defaultCapacity,
+          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward } = lastState;
+
+  // Score every open item once.
+  const scored = openItems.map(it => {
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const assignee = field(it, 'System.AssignedTo', '') || null;
+    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')) };
+  });
+
+  // Per-person throughput from completed items in the lookback window.
+  const byPerson = {};
+  function ensurePerson(name) {
+    if (!byPerson[name]) byPerson[name] = { name, completed: [], open: [] };
+    return byPerson[name];
+  }
+  completedInWindow.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    ensurePerson(assignee).completed.push({ item: it, complexity });
+  });
+  scored.forEach(s => {
+    if (s.assignee) ensurePerson(s.assignee).open.push(s);
+  });
+
+  Object.values(byPerson).forEach(p => {
+    const completedCount = p.completed.length;
+    const throughputPerWeek = completedCount / lookbackWeeks;
+    const avgComplexity = completedCount
+      ? p.completed.reduce((sum, c) => sum + c.complexity.score, 0) / completedCount
+      : null;
+    p.hasHistory = completedCount > 0;
+    p.weeklyCapacityPoints = p.hasHistory
+      ? Math.max(1, throughputPerWeek * avgComplexity)
+      : defaultCapacity;
+    p.throughputPerWeek = Math.round(throughputPerWeek * 10) / 10;
+    p.avgComplexity = avgComplexity != null ? Math.round(avgComplexity * 10) / 10 : null;
+    p.wipCount = p.open.filter(s => isInProgressItem(s.item)).length;
+  });
+
+  // Schedule per person: criticals always land in "this week" on top of the
+  // queue; everything else is queued oldest/highest-urgency first and
+  // spills into later weeks once weekly capacity is used up.
+  const criticalItems = [];
+  Object.values(byPerson).forEach(p => {
+    const nonCritical = p.open.filter(s => !s.urgency.critical);
+    p.open.filter(s => s.urgency.critical).forEach(s => {
+      s.suggestedWeek = 0;
+      criticalItems.push(s);
+    });
+    nonCritical.sort((a, b) => {
+      if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
+      return (b.age || 0) - (a.age || 0);
+    });
+    let weekIdx = 0, consumed = 0;
+    nonCritical.forEach(s => {
+      if (consumed > 0 && consumed + s.complexity.score > p.weeklyCapacityPoints) {
+        weekIdx++; consumed = 0;
+      }
+      s.suggestedWeek = Math.min(weekIdx, weeksForward);
+      consumed += s.complexity.score;
+    });
+  });
+
+  const unassigned = scored.filter(s => !s.assignee);
+
+  renderCriticalBanner(criticalItems);
+  renderOverview(scored, criticalItems, byPerson, wipLimit);
+  renderWip(byPerson, wipLimit);
+  renderOpenAssigneeFilter(scored);
+  window._scoredOpen = scored; // used by renderOpenTable()
+  renderOpenTable();
+  renderWeekGroups(scored.filter(s => s.assignee));
+  renderUnassigned(unassigned);
+  renderCarryover(carryoverItems);
+}
+
+function renderCriticalBanner(criticalItems) {
+  const banner = document.getElementById('banner-critical');
+  if (!criticalItems.length) { banner.style.display = 'none'; return; }
+  banner.style.display = 'block';
+  document.getElementById('banner-critical-meta').textContent =
+    `${criticalItems.length} item(s) flagged critical by priority or severity — scheduled into this week regardless of capacity.`;
+  document.getElementById('banner-critical-list').innerHTML = criticalItems.map(s => {
+    const it = s.item;
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);text-decoration:underline;font-weight:700">#${it.id}</a>`
+      : `#${it.id}`;
+    return `<li>${idCell} ${field(it, 'System.Title')} — ${s.assignee || 'Unassigned'} (Priority ${s.urgency.priorityRaw || '—'}, Severity ${s.urgency.severityRaw || '—'})</li>`;
+  }).join('');
+}
+
+function renderOverview(scored, criticalItems, byPerson, wipLimit) {
+  const grid = document.getElementById('overview-stats');
+  grid.style.display = 'grid';
+  const overWip = Object.values(byPerson).filter(p => p.wipCount > wipLimit).length;
+  const ages = scored.map(s => s.age).filter(a => a != null);
+  const avgAge = ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
+  grid.innerHTML = `
+    <div class="stat"><div class="num">${scored.length}</div><div class="label">Open items</div></div>
+    <div class="stat ${criticalItems.length ? 'stat-bad' : ''}"><div class="num">${criticalItems.length}</div><div class="label">Critical</div></div>
+    <div class="stat">${avgAge}<div class="label" style="margin-top:2px">Avg age (days)</div></div>
+    <div class="stat ${overWip ? 'stat-warn' : ''}"><div class="num">${overWip}</div><div class="label">People over WIP limit</div></div>
+  `;
+}
+
+function renderWip(byPerson, wipLimit) {
+  const sec = document.getElementById('sec-wip');
+  const people = Object.values(byPerson).sort((a, b) => b.wipCount - a.wipCount);
+  sec.style.display = people.length ? 'block' : 'none';
+  if (!people.length) return;
+
+  // lightweight day-by-day tracking, so this starts building history from today
+  const today = new Date().toISOString().slice(0, 10);
+  let trend = {};
+  try { trend = JSON.parse(storage.get(`capacity-wip-trend-${lastState.teamChoice}`) || '{}'); } catch (e) {}
+  people.forEach(p => {
+    if (!trend[p.name]) trend[p.name] = [];
+    const idx = trend[p.name].findIndex(t => t.date === today);
+    const entry = { date: today, wip: p.wipCount };
+    if (idx >= 0) trend[p.name][idx] = entry; else trend[p.name].push(entry);
+    trend[p.name] = trend[p.name].slice(-60);
+  });
+  storage.set(`capacity-wip-trend-${lastState.teamChoice}`, JSON.stringify(trend));
+
+  document.getElementById('wip-cards').innerHTML = people.map(p => {
+    const over = p.wipCount > wipLimit;
+    const pct = Math.min(100, Math.round((p.wipCount / wipLimit) * 100));
+    const hist = trend[p.name] || [];
+    const weekAgoEntry = hist.find(h => h.date <= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+    let trendNote = 'not enough tracked history yet';
+    if (weekAgoEntry) {
+      const delta = p.wipCount - weekAgoEntry.wip;
+      trendNote = delta === 0 ? 'flat vs 7 days ago' : `${delta > 0 ? '+' : ''}${delta} vs 7 days ago`;
+    }
+    const capNote = p.hasHistory
+      ? `est. weekly capacity ${Math.round(p.weeklyCapacityPoints * 10) / 10} pts (${p.throughputPerWeek}/wk avg, avg complexity ${p.avgComplexity})`
+      : `est. weekly capacity ${p.weeklyCapacityPoints} pts (no completion history in last ${lastState.lookbackWeeks}w — using default)`;
+    return `<div class="person-card">
+      <div class="person-head">
+        <div>
+          <div class="person-name">${p.name}</div>
+          <div class="person-meta">${capNote}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge ${over ? 'badge-bad' : 'badge-good'}">${p.wipCount} / ${wipLimit} WIP</span>
+          <div class="person-meta" style="margin-top:4px">${trendNote}</div>
+        </div>
+      </div>
+      <div class="wip-bar-track"><div class="wip-bar-fill ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderOpenAssigneeFilter(scored) {
+  const sel = document.getElementById('openAssigneeFilter');
+  const names = [...new Set(scored.map(s => s.assignee || 'Unassigned'))].sort();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+  if (names.includes(current)) sel.value = current;
+}
+
+function renderOpenTable() {
+  const scored = window._scoredOpen || [];
+  const filter = document.getElementById('openAssigneeFilter').value;
+  const visible = filter ? scored.filter(s => (s.assignee || 'Unassigned') === filter) : scored;
+  const sec = document.getElementById('sec-open');
+  sec.style.display = 'block';
+  document.getElementById('meta-open').textContent = `${visible.length} of ${scored.length} open item(s) shown — not Done, Closed, or Removed.`;
+  document.getElementById('rows-open').innerHTML = visible.length
+    ? visible.map(s => {
+        const it = s.item;
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+          : `#${it.id}`;
+        const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
+        return `<tr>
+          <td>${idCell}</td>
+          <td>${field(it, 'System.Title')}${critBadge}</td>
+          <td>${field(it, 'System.WorkItemType')}</td>
+          <td><span class="badge">${field(it, 'System.State')}</span></td>
+          <td>${s.urgency.priorityRaw || '—'}</td>
+          <td>${s.urgency.severityRaw || '—'}</td>
+          <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label} (${s.complexity.score})</td>
+          <td>${s.assignee || 'Unassigned'}</td>
+          <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
+          <td>${s.assignee ? weekLabel(s.suggestedWeek) : '—'}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="10" class="empty">No open items for this team</td></tr>`;
+}
+
+function renderWeekGroups(assignedScored) {
+  const sec = document.getElementById('sec-weeks');
+  sec.style.display = assignedScored.length ? 'block' : 'none';
+  if (!assignedScored.length) return;
+  const byWeek = {};
+  assignedScored.forEach(s => {
+    const w = s.suggestedWeek;
+    if (!byWeek[w]) byWeek[w] = [];
+    byWeek[w].push(s);
+  });
+  const weekIndices = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+  document.getElementById('week-groups').innerHTML = weekIndices.map(w => {
+    const items = byWeek[w].sort((a, b) => (b.urgency.critical - a.urgency.critical) || (b.urgency.urgencyScore - a.urgency.urgencyScore));
+    const rows = items.map(s => {
+      const it = s.item;
+      const idCell = workItemBaseUrl
+        ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+        : `#${it.id}`;
+      const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
+      return `<tr>
+        <td>${idCell}</td>
+        <td>${field(it, 'System.Title')}${critBadge}</td>
+        <td>${s.assignee}</td>
+        <td>${s.urgency.priorityRaw || '—'}</td>
+        <td>${s.urgency.severityRaw || '—'}</td>
+        <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="week-group">
+      <div class="week-head"><h3>${weekLabel(w)}</h3><span class="cap-note">${items.length} item(s)</span></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    </div>`;
+  }).join('');
+}
+
+function renderUnassigned(unassigned) {
+  const sec = document.getElementById('sec-unassigned');
+  sec.style.display = unassigned.length ? 'block' : 'none';
+  if (!unassigned.length) return;
+  document.getElementById('rows-unassigned').innerHTML = unassigned.map(s => {
+    const it = s.item;
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+      : `#${it.id}`;
+    return `<tr>
+      <td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
+      <td><span class="badge">${field(it, 'System.State')}</span></td>
+      <td>${s.urgency.priorityRaw || '—'}</td><td>${s.urgency.severityRaw || '—'}</td>
+      <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
+      <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCarryover(carryoverItems) {
+  const sec = document.getElementById('sec-carryover');
+  sec.style.display = 'block';
+  document.getElementById('meta-carryover').textContent =
+    `${carryoverItems.length} open item(s) left over from sprint(s) that have already ended.`;
+  document.getElementById('rows-carryover').innerHTML = carryoverItems.length
+    ? carryoverItems.map(c => {
+        const it = c.item;
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+          : `#${it.id}`;
+        const overdue = c.finishDate ? daysAgo(c.finishDate) : null;
+        return `<tr>
+          <td>${idCell}</td><td>${field(it, 'System.Title')}</td>
+          <td><span class="badge">${field(it, 'System.State')}</span></td>
+          <td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+          <td>${c.iterationName}</td>
+          <td>${(c.finishDate || '').slice(0, 10) || '—'}</td>
+          <td class="${ageClass(overdue)}">${overdue == null ? '—' : overdue}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="7" class="empty">Nothing carried over — every past sprint is clean</td></tr>`;
+}
+
+// ---------------------------------------------------------------------
+// Copy summary report — mirrors the old weekly report's "copy" flow, but
+// as a straight text summary of the sections that matter for a status
+// update: criticals, WIP overages, and carryover.
+// ---------------------------------------------------------------------
+async function copyReport() {
+  if (!lastState || !window._scoredOpen) {
+    document.getElementById('copy-status').textContent = 'Load a team first.';
+    return;
+  }
+  const scored = window._scoredOpen;
+  const criticals = scored.filter(s => s.urgency.critical);
+  const byPersonWip = {};
+  scored.forEach(s => {
+    if (!s.assignee) return;
+    byPersonWip[s.assignee] = byPersonWip[s.assignee] || 0;
+    if (isInProgressItem(s.item)) byPersonWip[s.assignee]++;
+  });
+  const over = Object.entries(byPersonWip).filter(([, c]) => c > lastState.wipLimit);
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  let text = `TEAM CAPACITY REPORT — ${lastState.teamChoice} — ${dateStr}\n\n`;
+  text += `Open items: ${scored.length}\n`;
+  text += `Critical (bypassing queue): ${criticals.length}\n`;
+  criticals.forEach(s => { text += `  #${s.item.id} ${field(s.item, 'System.Title')} — ${s.assignee || 'Unassigned'}\n`; });
+  text += `\nOver WIP limit (${lastState.wipLimit}):\n`;
+  over.length ? over.forEach(([name, c]) => { text += `  ${name}: ${c}\n`; }) : text += '  none\n';
+  text += `\nOpen items in past sprints: ${lastState.carryoverItems.length}\n`;
+  lastState.carryoverItems.forEach(c => {
+    text += `  #${c.item.id} ${field(c.item, 'System.Title')} — ${c.iterationName} (ended ${(c.finishDate || '').slice(0, 10)})\n`;
+  });
+
+  try {
+    await navigator.clipboard.writeText(text);
+    document.getElementById('copy-status').textContent = 'Copied to clipboard.';
+  } catch (e) {
+    document.getElementById('copy-status').textContent = 'Clipboard blocked by the browser.';
+  }
+}
+</script>
+</body>
+</html>
