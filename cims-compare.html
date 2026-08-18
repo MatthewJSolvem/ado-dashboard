@@ -245,9 +245,17 @@ const msalInstance = new msal.PublicClientApplication({
   cache: { cacheLocation: 'sessionStorage' },
 });
 
+let msalReady = null;
+function ensureMsalInitialized() {
+  if (!msalReady) msalReady = msalInstance.initialize();
+  return msalReady;
+}
+ensureMsalInitialized();
+
 async function connectPowerBI() {
   clearError();
   try {
+    await ensureMsalInitialized();
     const result = await msalInstance.loginPopup({ scopes: PBI_SCOPES });
     msalInstance.setActiveAccount(result.account);
     document.getElementById('pbi-status').textContent = `Connected as ${result.account.username}`;
@@ -258,6 +266,7 @@ async function connectPowerBI() {
   }
 }
 async function getPbiToken() {
+  await ensureMsalInitialized();
   const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
   if (!account) throw new Error('Not connected to Power BI — click "Connect to Power BI" first.');
   try {
