@@ -1,6 +1,12 @@
 /* ========================================================================
    ADO Ops Console — shared left-hand navigation
    Call ADONav.render('pageKey') once, right after <body> opens.
+
+   Includes a "Gen Z Mode" toggle in the sidebar that swaps chrome copy
+   (headings, buttons, labels, nav items, section titles, table column
+   headers) between normal and Gen Z phrasing. It deliberately never
+   touches table cell values, badges, or stat numbers — only UI chrome —
+   so real ticket data is never altered.
    ======================================================================== */
 
 const ADONav = (function () {
@@ -19,6 +25,98 @@ const ADONav = (function () {
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 7h5a2 2 0 0 1 2 2v3M11 17H6a2 2 0 0 1-2-2v-3"/></svg>' },
   ];
 
+  const GENZ_KEY = 'ado-genz-mode';
+
+  // exact-phrase swaps checked first (case-sensitive, trimmed match)
+  const GENZ_PHRASES = {
+    'Dashboard': 'Dash', 'Reports': 'Tea', 'Report': 'Tea',
+    'Connected': 'Vibin', 'No connection': 'Big No Cap', 'Not connected': 'Big No Cap',
+    'Checking…': 'Hol up…', 'Switch connection →': 'Switch the vibe →',
+    'Runs entirely in your browser.': 'Runs 100% in yo browser, no cap.',
+    'Nothing is sent anywhere but Azure DevOps.': "Ain't nothing leaving the chat 'cept straight to Azure DevOps, fr fr.",
+    'Morning Dashboard': 'AM Dash', 'Master Tracker Review': 'Tracker Recap, Bestie',
+    'Team Capacity Planner': 'Capacity Check', 'Client Investigation': 'Client Deep-Dive',
+    'Leaderboard': 'Clout Board', 'CIMS vs DevOps': 'CIMS Check, Fr Fr',
+    'CIMS vs DevOps Status Check': 'CIMS Check, No Cap',
+    'Connect →': 'Link Up →', 'Run Comparison': 'Run the Check, Bestie',
+    'Connect to Power BI': 'Link Power BI, Bestie', 'Load Dashboard': 'Pull Up the Dash',
+    'Refresh Review': 'Run It Back', 'Export CSV': 'Yeet to CSV',
+  };
+
+  // fallback whole-word swaps, only ever applied inside safelisted chrome
+  // elements (never table cells / badges / stat numbers)
+  const GENZ_WORDS = [
+    [/\bgood\b/gi, 'bussin'], [/\bgreat\b/gi, 'bussin'], [/\berrors?\b/gi, 'big yikes'],
+    [/\bloading\b/gi, 'hol up'], [/\bdone\b/gi, 'bet'], [/\bclosed\b/gi, 'closed fr fr'],
+    [/\bopen\b/gi, 'still poppin'], [/\bconnect\b/gi, 'link up'], [/\bconnection\b/gi, 'the link'],
+    [/\bweekly\b/gi, 'every week fr'], [/\bsummary\b/gi, 'the tea'], [/\bstatus\b/gi, 'the sitch'],
+    [/\breview\b/gi, 'recap'], [/\bsearch\b/gi, 'dig up'], [/\bcompare\b/gi, 'clock the diff'],
+    [/\bmismatch(es)?\b/gi, 'not it, sis'], [/\baligned\b/gi, 'in sync, no cap'],
+  ];
+
+  const SAFE_SELECTOR = [
+    'h1', 'h2', '.subtitle', 'button', 'label', '.nav-item', '.brand .name', '.brand .sub',
+    '.sidebar-footer', 'th', '#sidebar-conn-label', '.switch',
+  ].join(', ');
+
+  function transformText(s) {
+    const trimmed = s.trim();
+    if (GENZ_PHRASES[trimmed] != null) {
+      return s.replace(trimmed, GENZ_PHRASES[trimmed]);
+    }
+    let out = s;
+    GENZ_WORDS.forEach(([re, repl]) => { out = out.replace(re, repl); });
+    return out;
+  }
+
+  function genzifyEl(el) {
+    if (el.dataset.genzApplied === '1') return;
+    if (el.closest('[data-genz-skip]')) return;
+    const original = el.textContent;
+    if (!original || !original.trim()) return;
+    el.dataset.genzOrig = original;
+    el.textContent = transformText(original);
+    el.dataset.genzApplied = '1';
+  }
+  function ungenzifyEl(el) {
+    if (el.dataset.genzApplied !== '1') return;
+    el.textContent = el.dataset.genzOrig;
+    delete el.dataset.genzApplied;
+    delete el.dataset.genzOrig;
+  }
+
+  function applyGenZMode(on, root) {
+    (root || document).querySelectorAll(SAFE_SELECTOR).forEach(el => on ? genzifyEl(el) : ungenzifyEl(el));
+  }
+
+  function isGenZOn() {
+    try { return localStorage.getItem(GENZ_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setGenZ(on) {
+    try { localStorage.setItem(GENZ_KEY, on ? '1' : '0'); } catch (e) {}
+    applyGenZMode(on);
+  }
+  function toggleGenZ(on) { setGenZ(!!on); }
+
+  function ensureGenZStyle() {
+    if (document.getElementById('genz-style')) return;
+    const style = document.createElement('style');
+    style.id = 'genz-style';
+    style.textContent = `
+      .genz-row { display:flex; align-items:center; justify-content:space-between; gap:8px;
+        margin:4px 12px 10px; padding:9px 10px; border-radius:8px; background:var(--sb-bg-raised); border:1px solid var(--sb-border); }
+      .genz-row .genz-label { font-size:12px; font-weight:600; color:var(--sb-text); }
+      .genz-switch { position:relative; width:34px; height:19px; flex:0 0 auto; }
+      .genz-switch input { opacity:0; width:0; height:0; }
+      .genz-switch .slider { position:absolute; inset:0; background:#3a4157; border-radius:20px; cursor:pointer; transition:.15s; }
+      .genz-switch .slider:before { content:''; position:absolute; width:14px; height:14px; left:2.5px; top:2.5px;
+        background:#fff; border-radius:50%; transition:.15s; }
+      .genz-switch input:checked + .slider { background:var(--sb-accent); }
+      .genz-switch input:checked + .slider:before { transform:translateX(15px); }
+    `;
+    document.head.appendChild(style);
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -28,6 +126,7 @@ const ADONav = (function () {
   function render(activeKey) {
     const cfg = (window.ADOSession && ADOSession.load()) || null;
     const connected = !!(cfg && cfg.org && cfg.project);
+    const genzOn = isGenZOn();
 
     const navItems = PAGES.map(function (p) {
       const cls = 'nav-item' + (p.key === activeKey ? ' active' : '');
@@ -41,6 +140,10 @@ const ADONav = (function () {
           '<div class="nav-label">Reports</div>' +
           navItems +
         '</nav>' +
+        '<div class="genz-row">' +
+          '<span class="genz-label">Gen Z Mode</span>' +
+          '<label class="genz-switch"><input type="checkbox" id="genz-toggle-input" ' + (genzOn ? 'checked' : '') + ' onchange="ADONav.toggleGenZ(this.checked)"><span class="slider"></span></label>' +
+        '</div>' +
         '<div class="connection" id="sidebar-connection">' +
           '<div class="row"><span class="dot off" id="sidebar-dot"></span><span class="label" id="sidebar-conn-label">Checking…</span></div>' +
           '<div class="path" id="sidebar-conn-path">—</div>' +
@@ -49,12 +152,23 @@ const ADONav = (function () {
         '<div class="sidebar-footer">Runs entirely in your browser.<br>Nothing is sent anywhere but Azure DevOps.</div>' +
       '</aside>';
 
+    ensureGenZStyle();
     document.body.classList.add('shell-body');
     document.body.insertAdjacentHTML('afterbegin', html);
 
     // best-effort initial paint; a page that confirms a working session later
     // should call updateConnection(cfg) to guarantee the badge matches reality
     updateConnection(cfg);
+
+    // sidebar itself is in the DOM now — genz-ify it immediately if enabled
+    if (genzOn) applyGenZMode(true);
+
+    // the rest of the page (h1, buttons, section titles...) hasn't parsed
+    // yet since render() runs right after <body> opens — catch it once the
+    // document finishes loading
+    document.addEventListener('DOMContentLoaded', function () {
+      if (isGenZOn()) applyGenZMode(true);
+    });
   }
 
   // Call this once a page has actually confirmed (or failed to confirm) a
@@ -68,10 +182,11 @@ const ADONav = (function () {
     const connected = !!(cfg && cfg.org && cfg.project);
     dot.className = 'dot' + (connected ? '' : ' off');
     label.textContent = connected ? 'Connected' : 'No connection';
+    if (isGenZOn()) genzifyEl(label);
     path.innerHTML = connected
       ? escapeHtml(cfg.org) + ' / ' + escapeHtml(cfg.project) + (cfg.team ? '<br>' + escapeHtml(cfg.team) : '')
       : 'Not connected';
   }
 
-  return { render: render, updateConnection: updateConnection };
+  return { render: render, updateConnection: updateConnection, toggleGenZ: toggleGenZ, applyGenZMode: applyGenZMode, isGenZOn: isGenZOn };
 })();
