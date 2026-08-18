@@ -133,6 +133,7 @@
         <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
         <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
         <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
+        <div class="field"><label>Only include items created after</label><input id="createdAfter" type="date" value="2025-11-01"></div>
       </div>
     </details>
   </div>
@@ -164,9 +165,19 @@
     <div class="meta" id="meta-open"></div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Complexity</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th>
+      <th>Complexity</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
     </tr></thead>
     <tbody id="rows-open"></tbody></table></div>
+  </section>
+
+  <section id="sec-pool" style="display:none">
+    <h2>Unallocated Pool</h2>
+    <div class="meta" id="meta-pool">Items sitting in the "Unallocated Pool" iteration — not on anyone's schedule. Kept separate from the sprint-week queue below; sorted by how long they've been sitting there, longest first.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+      <th>Complexity</th><th>Assigned To</th><th>Days in pool</th>
+    </tr></thead>
+    <tbody id="rows-pool"></tbody></table></div>
   </section>
 
   <section id="sec-weeks" style="display:none">
@@ -242,6 +253,7 @@ let lastState = null; // everything the render functions need, kept for copyRepo
       if (o.criticalPriority) document.getElementById('criticalPriority').value = o.criticalPriority;
       if (o.criticalSeverityKeyword) document.getElementById('criticalSeverityKeyword').value = o.criticalSeverityKeyword;
       if (o.weeksForward) document.getElementById('weeksForward').value = o.weeksForward;
+      if (o.createdAfter) document.getElementById('createdAfter').value = o.createdAfter;
     } catch (e) {}
   }
 })();
@@ -418,15 +430,71 @@ function classifyUrgency(it, criticalPriority, criticalSeverityKeyword) {
   return { priorityRaw, severityRaw, priorityWeight, severityWeight, urgencyScore, critical };
 }
 
-function weekLabel(idx) {
+function weekMonday(idx) {
   const now = new Date();
   const daysSinceMonday = (now.getDay() + 6) % 7;
   const mondayThisWeek = new Date(now.getTime() - daysSinceMonday * 86400000);
-  const target = new Date(mondayThisWeek.getTime() + idx * 7 * 86400000);
+  return new Date(mondayThisWeek.getTime() + idx * 7 * 86400000);
+}
+function weekLabel(idx) {
+  const target = weekMonday(idx);
   const dateStr = target.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
   if (idx === 0) return `This week (${dateStr})`;
   if (idx === 1) return `Next week (${dateStr})`;
   return `Week of ${dateStr}`;
+}
+// [start, end) of the calendar week a suggested-week index refers to, for
+// checking whether an item's *actual* current iteration overlaps it.
+function weekRange(idx) {
+  const start = weekMonday(idx);
+  const end = new Date(start.getTime() + 7 * 86400000);
+  return [start, end];
+}
+
+// Runs async worker(item) over items with at most `limit` in flight at once.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+function isUnallocatedPoolPath(path) {
+  return !!path && path.toLowerCase().includes('unallocated pool');
+}
+
+// Compares an item's *actual* current iteration against a suggested-week
+// index. Returns one of: 'right' | 'wrong' | 'unscheduled' | 'pool' | null
+// (null = no suggested week to compare against, e.g. unassigned items).
+function sprintStatus(s, iterationByPath) {
+  if (s.suggestedWeek == null) return null;
+  const path = field(s.item, 'System.IterationPath');
+  if (isUnallocatedPoolPath(path)) return { status: 'pool' };
+  const iter = iterationByPath[path];
+  if (!iter || !iter.attributes || !iter.attributes.startDate || !iter.attributes.finishDate) {
+    return { status: 'unscheduled' };
+  }
+  const [weekStart, weekEnd] = weekRange(s.suggestedWeek);
+  const iterStart = new Date(iter.attributes.startDate);
+  const iterEnd = new Date(iter.attributes.finishDate);
+  const overlaps = iterStart < weekEnd && iterEnd >= weekStart;
+  return { status: overlaps ? 'right' : 'wrong', currentName: iter.name };
+}
+function sprintStatusBadge(s) {
+  const r = s._sprintStatus;
+  if (!r) return '<span class="badge badge-muted">—</span>';
+  if (r.status === 'right') return '<span class="badge badge-good">Right sprint</span>';
+  if (r.status === 'wrong') return `<span class="badge badge-bad">Wrong sprint (in ${r.currentName})</span>`;
+  if (r.status === 'unscheduled') return '<span class="badge badge-warn">Not yet scheduled</span>';
+  if (r.status === 'pool') return '<span class="badge badge-warn">Unallocated Pool</span>';
+  return '<span class="badge badge-muted">—</span>';
 }
 
 const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
@@ -453,6 +521,7 @@ async function loadCapacity() {
   const criticalPriority = parseInt(document.getElementById('criticalPriority').value, 10) || 1;
   const criticalSeverityKeyword = document.getElementById('criticalSeverityKeyword').value.trim();
   const weeksForward = Math.max(1, parseInt(document.getElementById('weeksForward').value, 10) || 8);
+  const createdAfter = document.getElementById('createdAfter').value; // 'YYYY-MM-DD' or ''
 
   if (!org || !project || !pat || !teamName) {
     showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
@@ -465,7 +534,7 @@ async function loadCapacity() {
     storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project }));
   }
   storage.set('ado-capacity-teamchoice', teamChoice);
-  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward }));
+  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter }));
 
   const btn = document.getElementById('loadBtn');
   btn.disabled = true;
@@ -512,19 +581,23 @@ async function loadCapacity() {
       setStatus(''); btn.disabled = false; return;
     }
 
+    const createdClause = createdAfter ? `AND [System.CreatedDate] >= '${createdAfter}'` : '';
+
     setStatus('Fetching all open items for this team...');
     const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND ${areaClause}
+              ${createdClause}
               ORDER BY [System.CreatedDate] ASC`, 'Open items for team');
     const allTeamItems = await getItems(base, openWiql.workItems.map(w => w.id), fields);
-    const openItems = allTeamItems.filter(isOpenItem);
+    const allOpenItems = allTeamItems.filter(isOpenItem);
 
     setStatus('Fetching recent completions (for throughput)...');
     const lookbackDays = lookbackWeeks * 7;
     const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND ${areaClause}
+              ${createdClause}
               AND [System.ChangedDate] >= @Today - ${lookbackDays}
               ORDER BY [System.ChangedDate] DESC`, 'Recently changed items for team');
     const recentChangedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
@@ -537,6 +610,8 @@ async function loadCapacity() {
     setStatus('Looking up sprints...');
     const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
     const now = new Date();
+    const iterationByPath = {};
+    (allIterData.value || []).forEach(it => { iterationByPath[it.path] = it; });
     const pastIterations = (allIterData.value || []).filter(it =>
       it.attributes && it.attributes.finishDate && new Date(it.attributes.finishDate) < now);
 
@@ -547,21 +622,55 @@ async function loadCapacity() {
       const carryWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                 WHERE [System.TeamProject] = '${project}'
                 AND ${areaClause}
+                ${createdClause}
                 AND [System.IterationPath] IN (${pathsClause})
                 ORDER BY [System.IterationPath] ASC`, 'Items in past sprints');
       const carryRaw = await getItems(base, carryWiql.workItems.map(w => w.id), fields);
-      const iterByPath = {};
-      pastIterations.forEach(it => { iterByPath[it.path] = it; });
-      carryoverItems = carryRaw.filter(isOpenItem).map(it => {
+      carryoverItems = carryRaw.filter(isOpenItem).filter(it => !isUnallocatedPoolPath(field(it, 'System.IterationPath'))).map(it => {
         const iterPath = field(it, 'System.IterationPath');
-        const iter = iterByPath[iterPath];
+        const iter = iterationByPath[iterPath];
         return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null };
       });
     }
 
+    // Split out the Unallocated Pool as its own thing — not a real sprint,
+    // so it doesn't belong in the normal open-items queue or the per-person
+    // capacity scheduling. Instead work out how long each item has actually
+    // been sitting there, from its revision history where possible.
+    const openItems = allOpenItems.filter(it => !isUnallocatedPoolPath(field(it, 'System.IterationPath')));
+    const poolItemsRaw = allOpenItems.filter(it => isUnallocatedPoolPath(field(it, 'System.IterationPath')));
+    let unallocatedPoolItems = [];
+    if (poolItemsRaw.length) {
+      setStatus(`Checking how long ${poolItemsRaw.length} pool item(s) have been sitting...`);
+      const POOL_HISTORY_CAP = 150;
+      const toCheck = poolItemsRaw.slice(0, POOL_HISTORY_CAP);
+      const poolSinceResults = await mapWithConcurrency(toCheck, 5, async (it) => {
+        try {
+          const updates = await adoGet(`${base}/_apis/wit/workitems/${it.id}/updates?api-version=7.1`);
+          const poolMoves = (updates.value || []).filter(u =>
+            u.fields && u.fields['System.IterationPath'] && isUnallocatedPoolPath(u.fields['System.IterationPath'].newValue));
+          const last = poolMoves[poolMoves.length - 1];
+          if (!last) return field(it, 'System.CreatedDate');
+          const changedDate = last.fields['System.ChangedDate'] && last.fields['System.ChangedDate'].newValue;
+          if (changedDate) return changedDate;
+          // revisedDate is only reliable as a fallback if it isn't ADO's
+          // "not yet superseded" sentinel (far-future date on the latest revision)
+          if (last.revisedDate && new Date(last.revisedDate).getFullYear() < 3000) return last.revisedDate;
+          return field(it, 'System.CreatedDate');
+        } catch (e) {
+          return field(it, 'System.CreatedDate'); // fall back to created date if history lookup fails
+        }
+      });
+      unallocatedPoolItems = toCheck.map((it, i) => ({ item: it, since: poolSinceResults[i], approx: false }));
+      // anything beyond the cap still gets shown, just without a reliable "since" date
+      poolItemsRaw.slice(POOL_HISTORY_CAP).forEach(it => {
+        unallocatedPoolItems.push({ item: it, since: field(it, 'System.CreatedDate'), approx: true });
+      });
+    }
+
     lastState = {
-      teamChoice, teamName, openItems, completedInWindow, carryoverItems, lookbackWeeks,
-      defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward,
+      teamChoice, teamName, openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks,
+      defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath, createdAfter,
     };
 
     setStatus('Scoring and scheduling...');
@@ -589,8 +698,8 @@ async function loadCapacity() {
 // Scoring + scheduling
 // ---------------------------------------------------------------------
 function computeAndRender() {
-  const { openItems, completedInWindow, carryoverItems, lookbackWeeks, defaultCapacity,
-          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward } = lastState;
+  const { openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks, defaultCapacity,
+          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath } = lastState;
 
   // Score every open item once.
   const scored = openItems.map(it => {
@@ -598,6 +707,16 @@ function computeAndRender() {
     const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
     const assignee = field(it, 'System.AssignedTo', '') || null;
     return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')) };
+  });
+
+  // Pool items are scored too (so criticals in the pool still show up in the
+  // banner), but never enter the per-person capacity queue below.
+  const scoredPool = unallocatedPoolItems.map(p => {
+    const it = p.item;
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const assignee = field(it, 'System.AssignedTo', '') || null;
+    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')), since: p.since, approx: p.approx };
   });
 
   // Per-person throughput from completed items in the lookback window.
@@ -632,8 +751,10 @@ function computeAndRender() {
   });
 
   // Schedule per person: criticals always land in "this week" on top of the
-  // queue; everything else is queued oldest/highest-urgency first and
-  // spills into later weeks once weekly capacity is used up.
+  // queue; everything else is queued oldest/highest-urgency first within
+  // High/Medium complexity, with Low-complexity items pushed to the very
+  // back of the queue (tackled last, regardless of urgency) and spilling
+  // into later weeks once weekly capacity is used up.
   const criticalItems = [];
   Object.values(byPerson).forEach(p => {
     const nonCritical = p.open.filter(s => !s.urgency.critical);
@@ -642,6 +763,9 @@ function computeAndRender() {
       criticalItems.push(s);
     });
     nonCritical.sort((a, b) => {
+      const aLow = a.complexity.label === 'Low' ? 1 : 0;
+      const bLow = b.complexity.label === 'Low' ? 1 : 0;
+      if (aLow !== bLow) return aLow - bLow; // non-Low first, Low last
       if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
       return (b.age || 0) - (a.age || 0);
     });
@@ -655,10 +779,23 @@ function computeAndRender() {
     });
   });
 
+  // Pool criticals don't get scheduled (pool is kept separate), but they
+  // still belong in the critical banner — they need pulling out of the pool.
+  const poolCriticals = scoredPool.filter(s => s.urgency.critical);
+
+  // Unassigned criticals never pass through a person's queue above (there's
+  // no queue to bypass), so they'd otherwise silently drop out of the
+  // banner entirely — which is exactly backwards, since nobody owning a
+  // critical item is worse, not better. Surface them explicitly instead.
+  const unassignedCriticals = scored.filter(s => !s.assignee && s.urgency.critical);
+
+  // Sprint-status comparison (actual current iteration vs. suggested week).
+  scored.forEach(s => { s._sprintStatus = sprintStatus(s, iterationByPath); });
+
   const unassigned = scored.filter(s => !s.assignee);
 
-  renderCriticalBanner(criticalItems);
-  renderOverview(scored, criticalItems, byPerson, wipLimit);
+  renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals);
+  renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems);
   renderWip(byPerson, wipLimit);
   renderOpenAssigneeFilter(scored);
   window._scoredOpen = scored; // used by renderOpenTable()
@@ -666,34 +803,42 @@ function computeAndRender() {
   renderWeekGroups(scored.filter(s => s.assignee));
   renderUnassigned(unassigned);
   renderCarryover(carryoverItems);
+  renderPool(scoredPool);
 }
 
-function renderCriticalBanner(criticalItems) {
+function renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals) {
   const banner = document.getElementById('banner-critical');
-  if (!criticalItems.length) { banner.style.display = 'none'; return; }
+  const all = [...criticalItems, ...(unassignedCriticals || []), ...(poolCriticals || [])];
+  if (!all.length) { banner.style.display = 'none'; return; }
   banner.style.display = 'block';
-  document.getElementById('banner-critical-meta').textContent =
-    `${criticalItems.length} item(s) flagged critical by priority or severity — scheduled into this week regardless of capacity.`;
-  document.getElementById('banner-critical-list').innerHTML = criticalItems.map(s => {
+  let meta = `${criticalItems.length} item(s) flagged critical by priority or severity — scheduled into this week regardless of capacity.`;
+  if (unassignedCriticals && unassignedCriticals.length) meta += ` ${unassignedCriticals.length} critical item(s) have nobody assigned yet.`;
+  if (poolCriticals && poolCriticals.length) meta += ` ${poolCriticals.length} more critical item(s) are sitting in the Unallocated Pool and need pulling out.`;
+  document.getElementById('banner-critical-meta').textContent = meta;
+  document.getElementById('banner-critical-list').innerHTML = all.map(s => {
     const it = s.item;
     const idCell = workItemBaseUrl
       ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);text-decoration:underline;font-weight:700">#${it.id}</a>`
       : `#${it.id}`;
-    return `<li>${idCell} ${field(it, 'System.Title')} — ${s.assignee || 'Unassigned'} (Priority ${s.urgency.priorityRaw || '—'}, Severity ${s.urgency.severityRaw || '—'})</li>`;
+    const poolNote = s.since !== undefined ? ` — <strong>in Unallocated Pool</strong> (${daysAgo(s.since) == null ? '?' : daysAgo(s.since)}d)` : '';
+    return `<li>${idCell} ${field(it, 'System.Title')} — ${s.assignee || 'Unassigned'} (Priority ${s.urgency.priorityRaw || '—'}, Severity ${s.urgency.severityRaw || '—'})${poolNote}</li>`;
   }).join('');
 }
 
-function renderOverview(scored, criticalItems, byPerson, wipLimit) {
+function renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems) {
   const grid = document.getElementById('overview-stats');
   grid.style.display = 'grid';
   const overWip = Object.values(byPerson).filter(p => p.wipCount > wipLimit).length;
   const ages = scored.map(s => s.age).filter(a => a != null);
   const avgAge = ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
+  const wrongSprint = scored.filter(s => s._sprintStatus && s._sprintStatus.status === 'wrong').length;
   grid.innerHTML = `
     <div class="stat"><div class="num">${scored.length}</div><div class="label">Open items</div></div>
     <div class="stat ${criticalItems.length ? 'stat-bad' : ''}"><div class="num">${criticalItems.length}</div><div class="label">Critical</div></div>
     <div class="stat">${avgAge}<div class="label" style="margin-top:2px">Avg age (days)</div></div>
     <div class="stat ${overWip ? 'stat-warn' : ''}"><div class="num">${overWip}</div><div class="label">People over WIP limit</div></div>
+    <div class="stat ${wrongSprint ? 'stat-warn' : ''}"><div class="num">${wrongSprint}</div><div class="label">In wrong sprint</div></div>
+    <div class="stat ${unallocatedPoolItems.length ? 'stat-warn' : ''}"><div class="num">${unallocatedPoolItems.length}</div><div class="label">In Unallocated Pool</div></div>
   `;
 }
 
@@ -720,7 +865,12 @@ function renderWip(byPerson, wipLimit) {
     const over = p.wipCount > wipLimit;
     const pct = Math.min(100, Math.round((p.wipCount / wipLimit) * 100));
     const hist = trend[p.name] || [];
-    const weekAgoEntry = hist.find(h => h.date <= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+    // pick the entry *closest to but not after* 7 days ago, not just the
+    // first one that qualifies — otherwise once history has piled up this
+    // silently compares against the oldest tracked day instead of ~7 days back
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const eligible = hist.filter(h => h.date <= cutoff).sort((a, b) => a.date < b.date ? -1 : 1);
+    const weekAgoEntry = eligible.length ? eligible[eligible.length - 1] : null;
     let trendNote = 'not enough tracked history yet';
     if (weekAgoEntry) {
       const delta = p.wipCount - weekAgoEntry.wip;
@@ -778,9 +928,38 @@ function renderOpenTable() {
           <td>${s.assignee || 'Unassigned'}</td>
           <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
           <td>${s.assignee ? weekLabel(s.suggestedWeek) : '—'}</td>
+          <td>${sprintStatusBadge(s)}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="10" class="empty">No open items for this team</td></tr>`;
+    : `<tr><td colspan="11" class="empty">No open items for this team</td></tr>`;
+}
+
+function renderPool(scoredPool) {
+  const sec = document.getElementById('sec-pool');
+  sec.style.display = scoredPool.length ? 'block' : 'none';
+  if (!scoredPool.length) return;
+  const sorted = scoredPool.slice().sort((a, b) => (daysAgo(a.since) ?? -1) < (daysAgo(b.since) ?? -1) ? 1 : -1);
+  document.getElementById('meta-pool').textContent =
+    `${sorted.length} item(s) in the Unallocated Pool, sorted by longest-sitting first. "Days in pool" is when we last saw an item's iteration set to Unallocated Pool; where that history couldn't be checked, it falls back to the item's created date (marked ~).`;
+  document.getElementById('rows-pool').innerHTML = sorted.map(s => {
+    const it = s.item;
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+      : `#${it.id}`;
+    const days = daysAgo(s.since);
+    const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
+    return `<tr>
+      <td>${idCell}</td>
+      <td>${field(it, 'System.Title')}${critBadge}</td>
+      <td>${field(it, 'System.WorkItemType')}</td>
+      <td><span class="badge">${field(it, 'System.State')}</span></td>
+      <td>${s.urgency.priorityRaw || '—'}</td>
+      <td>${s.urgency.severityRaw || '—'}</td>
+      <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
+      <td>${s.assignee || 'Unassigned'}</td>
+      <td class="${ageClass(days)}">${days == null ? '—' : days}${s.approx ? ' ~' : ''}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderWeekGroups(assignedScored) {
@@ -809,11 +988,12 @@ function renderWeekGroups(assignedScored) {
         <td>${s.urgency.priorityRaw || '—'}</td>
         <td>${s.urgency.severityRaw || '—'}</td>
         <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
+        <td>${sprintStatusBadge(s)}</td>
       </tr>`;
     }).join('');
     return `<div class="week-group">
       <div class="week-head"><h3>${weekLabel(w)}</h3><span class="cap-note">${items.length} item(s)</span></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>In right sprint?</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     </div>`;
   }).join('');
@@ -828,8 +1008,9 @@ function renderUnassigned(unassigned) {
     const idCell = workItemBaseUrl
       ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
       : `#${it.id}`;
+    const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
     return `<tr>
-      <td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
+      <td>${idCell}</td><td>${field(it, 'System.Title')}${critBadge}</td><td>${field(it, 'System.WorkItemType')}</td>
       <td><span class="badge">${field(it, 'System.State')}</span></td>
       <td>${s.urgency.priorityRaw || '—'}</td><td>${s.urgency.severityRaw || '—'}</td>
       <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
@@ -881,18 +1062,33 @@ async function copyReport() {
     if (isInProgressItem(s.item)) byPersonWip[s.assignee]++;
   });
   const over = Object.entries(byPersonWip).filter(([, c]) => c > lastState.wipLimit);
+  const wrongSprint = scored.filter(s => s._sprintStatus && s._sprintStatus.status === 'wrong');
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  let text = `TEAM CAPACITY REPORT — ${lastState.teamChoice} — ${dateStr}\n\n`;
-  text += `Open items: ${scored.length}\n`;
+  let text = `TEAM CAPACITY REPORT — ${lastState.teamChoice} — ${dateStr}\n`;
+  if (lastState.createdAfter) text += `(items created after ${lastState.createdAfter} only)\n`;
+  text += `\nOpen items: ${scored.length}\n`;
   text += `Critical (bypassing queue): ${criticals.length}\n`;
   criticals.forEach(s => { text += `  #${s.item.id} ${field(s.item, 'System.Title')} — ${s.assignee || 'Unassigned'}\n`; });
   text += `\nOver WIP limit (${lastState.wipLimit}):\n`;
   over.length ? over.forEach(([name, c]) => { text += `  ${name}: ${c}\n`; }) : text += '  none\n';
+  text += `\nIn the wrong sprint: ${wrongSprint.length}\n`;
+  wrongSprint.forEach(s => {
+    text += `  #${s.item.id} ${field(s.item, 'System.Title')} — currently in ${s._sprintStatus.currentName}, suggested ${weekLabel(s.suggestedWeek)}\n`;
+  });
   text += `\nOpen items in past sprints: ${lastState.carryoverItems.length}\n`;
   lastState.carryoverItems.forEach(c => {
     text += `  #${c.item.id} ${field(c.item, 'System.Title')} — ${c.iterationName} (ended ${(c.finishDate || '').slice(0, 10)})\n`;
   });
+  text += `\nIn Unallocated Pool: ${lastState.unallocatedPoolItems.length}\n`;
+  lastState.unallocatedPoolItems
+    .slice()
+    .sort((a, b) => (daysAgo(a.since) ?? -1) < (daysAgo(b.since) ?? -1) ? 1 : -1)
+    .slice(0, 10)
+    .forEach(p => {
+      const d = daysAgo(p.since);
+      text += `  #${p.item.id} ${field(p.item, 'System.Title')} — sitting ${d == null ? '?' : d}d${p.approx ? ' (approx)' : ''}\n`;
+    });
 
   try {
     await navigator.clipboard.writeText(text);
