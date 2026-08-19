@@ -19,10 +19,10 @@ const ADONav = (function () {
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15l2 2 4-4"/></svg>' },
     { key: 'client', href: 'client-investigation.html', label: 'Client Investigation',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' },
+    { key: 'crm', href: 'crm-clients.html', label: 'Client Relationship Manager',
+      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
     { key: 'leaderboard', href: 'leaderboard.html', label: 'Leaderboard',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a2 2 0 0 0 2 4M17 6h3a2 2 0 0 1-2 4"/></svg>' },
-    { key: 'cims', href: 'cims-compare.html', label: 'CIMS vs DevOps',
-      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 7h5a2 2 0 0 1 2 2v3M11 17H6a2 2 0 0 1-2-2v-3"/></svg>' },
   ];
 
   const GENZ_KEY = 'ado-genz-mode';
@@ -36,11 +36,10 @@ const ADONav = (function () {
     'Nothing is sent anywhere but Azure DevOps.': "Ain't nothing leaving the chat 'cept straight to Azure DevOps, fr fr.",
     'Morning Dashboard': 'AM Dash', 'Master Tracker Review': 'Tracker Recap, Bestie',
     'Team Capacity Planner': 'Capacity Check', 'Client Investigation': 'Client Deep-Dive',
-    'Leaderboard': 'Clout Board', 'CIMS vs DevOps': 'CIMS Check, Fr Fr',
-    'CIMS vs DevOps Status Check': 'CIMS Check, No Cap',
-    'Connect →': 'Link Up →', 'Run Comparison': 'Run the Check, Bestie',
-    'Connect to Power BI': 'Link Power BI, Bestie', 'Load Dashboard': 'Pull Up the Dash',
-    'Refresh Review': 'Run It Back', 'Export CSV': 'Yeet to CSV',
+    'Leaderboard': 'Clout Board', 'Client Relationship Manager': 'CRM, No Cap',
+    'Connect →': 'Link Up →', 'Load Dashboard': 'Pull Up the Dash',
+    'Refresh Review': 'Run It Back', 'Export CSV': 'Yeet to CSV', 'Load Data': 'Pull the Tea',
+    'Copy summary': 'Yeet the Recap', 'Report mode': 'Client-Safe Mode',
   };
 
   // fallback whole-word swaps, only ever applied inside safelisted chrome
