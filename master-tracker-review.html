@@ -208,6 +208,24 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
+// Finds the date a work item actually transitioned into targetState, by
+// walking its revision history — NOT the same as System.ChangedDate, which
+// gets bumped by any field edit (comments, tags, links, description, etc.)
+// even long after the state transition happened. Returns the newValue date
+// of the last revision where State became targetState, or null if it was
+// never observed transitioning there (e.g. created directly in that state).
+async function findActualTransitionDate(id, targetState) {
+  try {
+    const updates = await getWorkItemUpdates(id);
+    const toStateUpdates = (updates.value || []).filter(u =>
+      u.fields && u.fields['System.State'] && u.fields['System.State'].newValue === targetState);
+    const lastTransition = toStateUpdates[toStateUpdates.length - 1];
+    return lastTransition && lastTransition.fields['System.ChangedDate']
+      ? lastTransition.fields['System.ChangedDate'].newValue
+      : null;
+  } catch (e) { return null; }
+}
+
 // For a work item that's currently Done: finds who actually moved it to Done
 // (from its revision history, not just who last touched it) and who it was
 // assigned to at that moment.
@@ -393,13 +411,28 @@ async function loadReview() {
               WHERE [System.TeamProject] = '${project}'
               AND [System.WorkItemType] = 'Master Tracker'
               AND [System.CreatedDate] >= ${weekStartClause}`, 'Master Trackers created this week');
-    const closedThisWeekWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+    // NOTE: [System.ChangedDate] here is only used to build a *candidate* list
+    // — it's bumped by any field edit, not just the Closed transition, so a
+    // tracker closed weeks ago that just got a comment or tag change this
+    // week would otherwise be miscounted as "closed this week". The candidate
+    // set below is a superset (every currently-Closed tracker touched this
+    // week); we then check each one's actual revision history to find when
+    // it really transitioned to Closed, and only count those that happened
+    // in the current week.
+    const closedCandidatesWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND [System.WorkItemType] = 'Master Tracker'
               AND [System.State] = 'Closed'
-              AND [System.ChangedDate] >= ${weekStartClause}`, 'Master Trackers closed this week');
+              AND [System.ChangedDate] >= ${weekStartClause}`, 'Master Trackers currently closed (candidates)');
     const createdThisWeekCount = (createdThisWeekWiql.workItems || []).length;
-    const closedThisWeekCount = (closedThisWeekWiql.workItems || []).length;
+
+    setStatus('Verifying actual close dates...');
+    const closedCandidateIds = (closedCandidatesWiql.workItems || []).map(w => w.id);
+    const weekStartDate = new Date(now.getTime() - daysSinceMonday * 86400000);
+    weekStartDate.setHours(0, 0, 0, 0);
+    const closedTransitionDates = await mapWithConcurrency(closedCandidateIds, 6,
+      id => findActualTransitionDate(id, 'Closed'));
+    const closedThisWeekCount = closedTransitionDates.filter(d => d && new Date(d) >= weekStartDate).length;
 
     setStatus('Checking for reopened trackers...');
     const reopenedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems

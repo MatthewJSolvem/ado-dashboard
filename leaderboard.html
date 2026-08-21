@@ -275,6 +275,71 @@ function isTerminal(typeStateMap, item) {
   return cat === 'Completed' || cat === 'Removed';
 }
 
+// Runs async worker(item) over items with at most `limit` in flight at once —
+// keeps us from firing hundreds of simultaneous requests at Azure DevOps.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// Finds the date an item actually transitioned into a Completed-category
+// state, by walking its revision history — NOT the same as System.ChangedDate,
+// which gets bumped by any field edit (comments, tags, links, description,
+// etc.) even long after the completion happened. Returns null if the item's
+// history never shows that transition (e.g. created directly into Done).
+async function findActualCompletionDate(item, base, typeStateMap) {
+  const wit = field(item, 'System.WorkItemType');
+  try {
+    const data = await adoGet(`${base}/_apis/wit/workitems/${item.id}/updates?api-version=7.1`);
+    const completedUpdates = (data.value || []).filter(rev => {
+      const sc = rev.fields && rev.fields['System.State'];
+      const newState = sc && sc.newValue;
+      return newState && resolveCategory(typeStateMap, wit, newState) === 'Completed';
+    });
+    const last = completedUpdates[completedUpdates.length - 1];
+    return last && last.fields['System.ChangedDate'] ? last.fields['System.ChangedDate'].newValue : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Finds the date an item most recently moved OUT of a Completed state back to
+// an active state (a real reopen), by walking revision history — not just
+// "currently not-terminal and touched this week", which would also catch
+// items reopened long ago that simply got edited again this week.
+async function findActualReopenDate(item, base, typeStateMap) {
+  const wit = field(item, 'System.WorkItemType');
+  try {
+    const data = await adoGet(`${base}/_apis/wit/workitems/${item.id}/updates?api-version=7.1`);
+    let wasCompleted = false;
+    let lastReopenDate = null;
+    (data.value || []).forEach(rev => {
+      const sc = rev.fields && rev.fields['System.State'];
+      const newState = sc && sc.newValue;
+      if (!newState) return;
+      const cat = resolveCategory(typeStateMap, wit, newState);
+      if (cat === 'Completed') {
+        wasCompleted = true;
+      } else if (wasCompleted && cat !== 'Removed') {
+        lastReopenDate = rev.fields['System.ChangedDate'] ? rev.fields['System.ChangedDate'].newValue : null;
+        wasCompleted = false;
+      }
+    });
+    return lastReopenDate;
+  } catch (e) {
+    return null;
+  }
+}
+
 let teams = [];
 function exportReport() {
   const dateStr = new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -403,11 +468,24 @@ async function runLeaderboard() {
                   WHERE [System.TeamProject] = '${project}' AND [System.IterationPath] = '${iterPath}'`, `${team.name} sprint items`);
         const items = await getItems(base, itemsResult.workItems.map(w => w.id), fields);
 
+        // System.ChangedDate gets bumped by any field edit, not just a state
+        // transition — an item completed weeks ago that just got a comment or
+        // tag change this week would otherwise be miscounted as "completed
+        // this week". So for every item currently Completed, look up its
+        // actual completion date from revision history and use that instead.
+        const completedNowItems = items.filter(it => isCompleted(typeStateMap, it));
+        const actualCompletionDates = await mapWithConcurrency(completedNowItems, 8,
+          it => findActualCompletionDate(it, base, typeStateMap));
+        const completionDateById = {};
+        completedNowItems.forEach((it, i) => {
+          completionDateById[it.id] = actualCompletionDates[i] || field(it, 'System.ChangedDate');
+        });
+
         // Most tickets completed this week (kept internally as an input to
         // Backlog Growth below - not shown as its own podium, since a raw
         // "count of Done clicks" is too easy to fake)
-        teamResult.completedThisWeek = items.filter(it =>
-          isCompleted(typeStateMap, it) && new Date(field(it, 'System.ChangedDate')) >= thisWeekStart
+        teamResult.completedThisWeek = completedNowItems.filter(it =>
+          new Date(completionDateById[it.id]) >= thisWeekStart
         ).length;
 
         // Verified completions: items completed LAST week that are STILL
@@ -436,9 +514,8 @@ async function runLeaderboard() {
         // backlog item was pulled into the sprint mid-week, since ADO doesn't
         // expose an "added to iteration" date through this API.)
         if (iterStartDate) {
-          teamResult.aboveAndBeyond = items.filter(it =>
-            isCompleted(typeStateMap, it) &&
-            new Date(field(it, 'System.ChangedDate')) >= thisWeekStart &&
+          teamResult.aboveAndBeyond = completedNowItems.filter(it =>
+            new Date(completionDateById[it.id]) >= thisWeekStart &&
             new Date(field(it, 'System.CreatedDate')) > iterStartDate
           ).length;
         }
@@ -462,15 +539,22 @@ async function runLeaderboard() {
         const openItems = items.filter(it => !isTerminal(typeStateMap, it));
         teamResult.staleCount = openItems.filter(it => (daysAgo(field(it, 'System.ChangedDate')) || 0) > AGING_THRESHOLD_DAYS).length;
 
-        // Cleanest sprint: reopened items this week
+        // Cleanest sprint: reopened items this week. As with completions,
+        // System.ChangedDate alone would also catch items reopened long ago
+        // that just got touched again this week, so the actual reopen date
+        // is confirmed from revision history for each candidate.
         if (items.length) {
           const idList = items.map(it => it.id).join(',');
           try {
             const reopenResult = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                       WHERE [System.TeamProject] = '${project}' AND [System.Id] IN (${idList}) AND ${everClause}`, `${team.name} reopen check`);
             const everCompletedIds = new Set(reopenResult.workItems.map(w => w.id));
-            teamResult.reopenedThisWeek = items.filter(it => everCompletedIds.has(it.id) && !isTerminal(typeStateMap, it) &&
-              new Date(field(it, 'System.ChangedDate')) >= thisWeekStart).length;
+            const reopenCandidates = items.filter(it => everCompletedIds.has(it.id) && !isTerminal(typeStateMap, it) &&
+              new Date(field(it, 'System.ChangedDate')) >= thisWeekStart);
+            const actualReopenDates = await mapWithConcurrency(reopenCandidates, 8,
+              it => findActualReopenDate(it, base, typeStateMap));
+            teamResult.reopenedThisWeek = reopenCandidates.filter((it, i) =>
+              actualReopenDates[i] && new Date(actualReopenDates[i]) >= thisWeekStart).length;
           } catch (e) { teamResult.reopenedThisWeek = null; }
         } else {
           teamResult.reopenedThisWeek = 0;

@@ -707,6 +707,46 @@ async function computeReopenRate(items, base, typeStateMap) {
   return { rate: (reopenedCount / items.length) * 100, reopenedCount, total: items.length, failed };
 }
 
+// Runs async worker(item) over items with at most `limit` in flight at once —
+// keeps us from firing hundreds of simultaneous requests at Azure DevOps.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// Finds the date an item actually transitioned into a Completed-category state
+// (or a literal Closed/Done state), by walking its revision history — NOT the
+// same as System.ChangedDate, which gets bumped by any field edit (comments,
+// tags, links, description, etc.) even long after the completion happened.
+// Returns null if no such transition is found in history (e.g. created
+// directly into a completed state).
+async function findActualCompletionDate(item, base, typeStateMap) {
+  const witType = field(item, 'System.WorkItemType');
+  try {
+    const data = await adoGet(`${base}/_apis/wit/workitems/${item.id}/updates?api-version=7.1`);
+    const completedUpdates = (data.value || []).filter(rev => {
+      const sc = rev.fields && rev.fields['System.State'];
+      const newState = sc && sc.newValue;
+      if (!newState) return false;
+      if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(newState.toLowerCase())) return true;
+      return (typeStateMap[witType] || {})[newState] === 'Completed';
+    });
+    const last = completedUpdates[completedUpdates.length - 1];
+    return last && last.fields['System.ChangedDate'] ? last.fields['System.ChangedDate'].newValue : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function renderTeamPerformance() {
   if (!perfData) return;
   const areaPath = document.getElementById('perfAreaSelect').value;
@@ -737,8 +777,8 @@ async function renderTeamPerformance() {
   const thisWeekStart = new Date(now2.getTime() - dsm2 * 86400000);
   const counts = [0, 0, 0, 0]; // 0 = this week, 3 = three weeks ago
   filteredFourWeek.forEach(it => {
-    const changed = new Date(field(it, 'System.ChangedDate'));
-    const weeksAgo = Math.max(0, Math.min(3, Math.floor((thisWeekStart - changed) / (7 * 86400000))));
+    const completed = new Date(field(it, '_ActualCompletedDate') || field(it, 'System.ChangedDate'));
+    const weeksAgo = Math.max(0, Math.min(3, Math.floor((thisWeekStart - completed) / (7 * 86400000))));
     counts[weeksAgo]++;
   });
   renderLineChart('chart-perf-trend', ['3 weeks ago', '2 weeks ago', 'Last week', 'This week'], [
@@ -1150,13 +1190,37 @@ async function loadDashboard() {
     }
 
     setStatus('Fetching completion history (4 weeks)...');
+    // [System.ChangedDate] >= @Today - 27 here only builds a *candidate* list —
+    // it's bumped by any field edit, not just the completion transition, so an
+    // item completed months ago that just got a comment or tag change recently
+    // would otherwise show up as "completed" in this window. Below, each
+    // candidate's actual completion date is looked up from its revision
+    // history so the 4-week trend and "Completed this week" count reflect
+    // when items were really finished, not when they were last touched.
     const trend4WeekWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
               AND [System.ChangedDate] >= @Today - 27
               AND ${completedClause}
               ORDER BY [System.ChangedDate] DESC`, 'Completion history (4 weeks)');
-    const fourWeekItems = await getItems(base, trend4WeekWiql.workItems.map(w => w.id), fields);
-    const weeklyItems = fourWeekItems.filter(it => (field(it, 'System.ChangedDate') || '').slice(0, 10) >= weekStartDateKey);
+    const fourWeekCandidates = await getItems(base, trend4WeekWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Verifying actual completion dates...');
+    const actualCompletionDates = await mapWithConcurrency(fourWeekCandidates, 8,
+      it => findActualCompletionDate(it, base, typeStateMap));
+    fourWeekCandidates.forEach((it, i) => {
+      // Fall back to ChangedDate only if history lookup found nothing (e.g.
+      // item was created directly into a completed state) so it isn't
+      // silently dropped from the trend.
+      const actual = actualCompletionDates[i] || field(it, 'System.ChangedDate');
+      it.fields['_ActualCompletedDate'] = actual;
+    });
+    // Re-scope to the actual 4-week window now that we know real completion
+    // dates (a candidate whose ChangedDate was recent but whose real
+    // completion was older than 27 days gets dropped here).
+    const fourWeekStartDateKey = new Date(now.getTime() - (27 * 86400000)).toISOString().slice(0, 10);
+    const fourWeekItems = fourWeekCandidates.filter(it =>
+      (field(it, '_ActualCompletedDate') || '').slice(0, 10) >= fourWeekStartDateKey);
+    const weeklyItems = fourWeekItems.filter(it => (field(it, '_ActualCompletedDate') || '').slice(0, 10) >= weekStartDateKey);
 
     setStatus('Searching assigned resources...');
     const workloadWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
