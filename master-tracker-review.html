@@ -168,6 +168,15 @@
     <tbody id="rows-undocumented"></tbody></table></div>
   </section>
 
+  <section id="sec-typechanged" style="display:none">
+    <h2>Work item type changed</h2>
+    <div class="meta" id="meta-typechanged">Child items whose work item type has been changed since July 1, 2026 — worth a quick check that the reclassification was intentional.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Original type</th><th>Current type</th><th>Master Tracker</th><th>Changed by</th><th>Date</th>
+    </tr></thead>
+    <tbody id="rows-typechanged"></tbody></table></div>
+  </section>
+
 <script>
 let workItemBaseUrl = '';
 let lastResults = []; // needing-attention rows, kept for copyList()
@@ -261,6 +270,40 @@ async function analyzeCompletion(child) {
     descriptionEmpty: !stripHtml(field(child, 'System.Description')),
     commentCount: comments.count,
   };
+}
+
+// Date from which retyped items are surfaced — matches Matthew's request to
+// scope this to changes since July 2026 rather than the full history.
+const TYPE_CHANGE_SINCE = new Date('2026-07-01T00:00:00Z');
+
+// Finds whether a child item's work item type has ever been changed (e.g.
+// Bug -> Task), by walking its revision history for System.WorkItemType
+// field changes. Returns null if the type has never changed. If it changed
+// more than once, uses the earliest oldValue as "original type" and the most
+// recent change's date/author.
+async function findTypeChangeInfo(item) {
+  try {
+    const updates = await getWorkItemUpdates(item.id);
+    const typeChanges = (updates.value || []).filter(u => {
+      const f = u.fields && u.fields['System.WorkItemType'];
+      return f && f.oldValue && f.newValue && f.oldValue !== f.newValue;
+    });
+    if (!typeChanges.length) return null;
+    const first = typeChanges[0];
+    const last = typeChanges[typeChanges.length - 1];
+    const changedBy = last.revisedBy || {};
+    return {
+      id: item.id,
+      title: field(item, 'System.Title'),
+      originalType: first.fields['System.WorkItemType'].oldValue,
+      currentType: field(item, 'System.WorkItemType'),
+      changedByName: changedBy.displayName || changedBy.uniqueName || 'Unknown',
+      date: last.fields['System.ChangedDate'] ? last.fields['System.ChangedDate'].newValue : null,
+      changeCount: typeChanges.length,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 function restoreConfig() {
@@ -481,6 +524,7 @@ async function loadReview() {
       renderOrphans(orphanItems0);
       renderCompletedByOther([]);
       renderUndocumented([]);
+      renderTypeChanged([]);
       document.getElementById('stats').style.display = 'none';
       document.getElementById('sec-attention').style.display = 'block';
       document.getElementById('meta-attention').textContent = '0 Master Tracker(s) needing attention';
@@ -546,6 +590,10 @@ async function loadReview() {
       a.assignedToKey && a.completedByKey && a.assignedToKey !== a.completedByKey);
     const undocumented = analyses.filter(a => a.descriptionEmpty && a.commentCount === 0);
 
+    setStatus('Checking for work item type changes...');
+    const typeChangeResults = (await mapWithConcurrency(children, 6, findTypeChangeInfo)).filter(Boolean);
+    const typeChanged = typeChangeResults.filter(t => t.date && new Date(t.date) >= TYPE_CHANGE_SINCE);
+
     lastResults = attention; lastResults._loaded = true;
     const avgChildren = childCounts.length ? childCounts.reduce((a, b) => a + b, 0) / childCounts.length : 0;
     const conversionRate = trackers.length ? (attention.length / trackers.length) * 100 : 0;
@@ -556,6 +604,7 @@ async function loadReview() {
     renderOrphans(orphanItems);
     renderCompletedByOther(completedByOther, childToParent);
     renderUndocumented(undocumented, childToParent);
+    renderTypeChanged(typeChanged, childToParent);
     const avgAgeToday = attention.length
       ? Math.round(attention.map(a => daysAgo(a.created)).filter(d => d != null).reduce((s, d) => s + d, 0) / attention.length)
       : null;
@@ -611,6 +660,25 @@ function renderUndocumented(items, childToParent) {
       : (parentId ? `#${parentId}` : '—');
     return `<tr><td>${idCell}</td><td>${it.title}</td><td><span class="badge">${it.type}</span></td><td>${parentCell}</td>
       <td>${it.completedByName}</td><td>${(it.date||'').slice(0,10)}</td><td><span class="badge badge-bad">No description, no comments</span></td></tr>`;
+  }).join('');
+}
+
+function renderTypeChanged(items, childToParent) {
+  const sorted = items.slice().sort((a, b) => (b.date || '') < (a.date || '') ? -1 : 1); // newest first
+  const sec = document.getElementById('sec-typechanged');
+  sec.style.display = sorted.length ? 'block' : 'none';
+  document.getElementById('meta-typechanged').textContent =
+    `${sorted.length} child item(s) whose work item type has changed since July 1, 2026.`;
+  document.getElementById('rows-typechanged').innerHTML = sorted.map(it => {
+    const idCell = workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+      : `#${it.id}`;
+    const parentId = (childToParent || {})[it.id];
+    const parentCell = parentId && workItemBaseUrl
+      ? `<a href="${workItemBaseUrl}${parentId}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">#${parentId}</a>`
+      : (parentId ? `#${parentId}` : '—');
+    return `<tr><td>${idCell}</td><td>${it.title}</td><td><span class="badge">${it.originalType}</span></td>
+      <td><span class="badge badge-warn">${it.currentType}</span></td><td>${parentCell}</td><td>${it.changedByName}</td><td>${(it.date||'').slice(0,10)}</td></tr>`;
   }).join('');
 }
 
