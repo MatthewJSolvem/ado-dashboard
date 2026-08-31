@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Resource Review</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 24px; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  input, select { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+         color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 18px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 7px 10px; font-size: 12px; text-transform: none; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  details.config-details { margin-top: 14px; }
+  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent); font-weight: 600; }
+  details.config-details .config-grid { margin-top: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat.stat-bad { border-left-color: var(--bad); }
+  .stat.stat-warn { border-left-color: var(--warn); }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge-muted { background: #eceff1; color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .suggestion-cell { max-width: 280px; white-space: normal; font-size: 12px; line-height: 1.4; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:after { content: ' \2195'; opacity: 0.4; font-size: 10px; }
+  @media print {
+    body { background: #fff !important; padding: 0; }
+    .no-print { display: none !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    section { box-shadow: none !important; border: 1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+<script>ADONav.render('resource');</script>
+<div class="app-main">
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px" class="no-print">
+    <h1>Resource Review</h1>
+    <button onclick="copyReport()" class="small" style="text-transform:none">Copy summary</button>
+  </div>
+  <div class="subtitle">Per-person view of planned load, out-of-scope work, resolution speed, and completion efficiency for the current sprint, with a suggested improvement for each person.</div>
+
+  <div class="config">
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
+    </div>
+    <div class="config-grid">
+      <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+      <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
+      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
+      <div class="field">
+        <label>Team to review</label>
+        <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
+          <option value="Dev">Dev</option>
+          <option value="QA">QA</option>
+          <option value="Analysis">Analysis</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="loadBtn" onclick="loadReview()">Review Team</button>
+      <span id="status"></span>
+    </div>
+
+    <details class="config-details">
+      <summary>Review options</summary>
+      <div class="config-grid">
+        <div class="field"><label>In-scope work item types (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
+        <div class="field"><label>MTTR lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
+        <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
+        <div class="field"><label>Stale threshold (days)</label><input id="staleDays" type="number" value="5" min="1"></div>
+        <div class="field"><label>MTTR warn / bad (days)</label>
+          <div style="display:flex;gap:6px">
+            <input id="mttrWarn" type="number" value="7" min="1" style="width:70px">
+            <input id="mttrBad" type="number" value="14" min="1" style="width:70px">
+          </div>
+        </div>
+        <div class="field"><label>Efficiency warn / bad (%)</label>
+          <div style="display:flex;gap:6px">
+            <input id="effWarn" type="number" value="70" min="1" max="100" style="width:70px">
+            <input id="effBad" type="number" value="50" min="1" max="100" style="width:70px">
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="error"></div>
+
+  <div id="overview-stats" class="grid" style="display:none"></div>
+
+  <section id="sec-table" style="display:none">
+    <h2>Resources</h2>
+    <div class="meta" id="meta-table"></div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th class="sortable" onclick="sortBy('name')">Resource</th>
+        <th class="sortable" onclick="sortBy('planned')">Planned (wk)</th>
+        <th class="sortable" onclick="sortBy('completed')">Completed (wk)</th>
+        <th class="sortable" onclick="sortBy('efficiencyPct')">Efficiency</th>
+        <th class="sortable" onclick="sortBy('outOfScope')">Out-of-Scope</th>
+        <th class="sortable" onclick="sortBy('mttrDays')">MTTR (d)</th>
+        <th class="sortable" onclick="sortBy('wipCount')">WIP</th>
+        <th class="sortable" onclick="sortBy('staleCount')">Stale</th>
+        <th class="sortable" onclick="sortBy('reopenedCount')">Reopened</th>
+        <th>Suggested Improvement</th>
+      </tr></thead>
+      <tbody id="rows-table"></tbody>
+    </table></div>
+  </section>
+
+</div>
+
+<script>
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+let workItemBaseUrl = '';
+let typeStateMapGlobal = {};
+let lastState = null;
+let lastResults = [];
+let sortState = { key: 'efficiencyPct', dir: 1 };
+
+const DEFAULT_TYPES_BY_TEAM = { Dev: 'Bug, Task', QA: 'Bug, Test Case', Analysis: '' };
+function applyDefaultWorkItemTypes() {
+  const el = document.getElementById('workItemTypes');
+  const allDefaults = Object.values(DEFAULT_TYPES_BY_TEAM);
+  if (!el.value.trim() || allDefaults.includes(el.value.trim())) {
+    el.value = DEFAULT_TYPES_BY_TEAM[document.getElementById('teamChoice').value] || '';
+  }
+}
+
+// ---- restore shared config (reuses the same keys as Team Capacity Planner,
+// so area paths/team names typed there don't need re-typing here) ----
+(function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw);
+      document.getElementById('org').value = cfg.org || '';
+      document.getElementById('project').value = cfg.project || '';
+    } catch (e) {}
+  }
+  const raw2 = storage.get('ado-capacity-teamnames') || storage.get('ado-team-report-teamnames');
+  if (raw2) {
+    try {
+      const a = JSON.parse(raw2);
+      document.getElementById('areaDev').value = a.dev || '';
+      document.getElementById('areaQA').value = a.qa || '';
+      document.getElementById('areaAnalysis').value = a.analysis || '';
+    } catch (e) {}
+  }
+  const savedChoice = storage.get('ado-resource-review-teamchoice') || storage.get('ado-capacity-teamchoice');
+  if (savedChoice) document.getElementById('teamChoice').value = savedChoice;
+  const savedOptions = storage.get('ado-resource-review-options');
+  let restoredTypes = false;
+  if (savedOptions) {
+    try {
+      const o = JSON.parse(savedOptions);
+      if (o.lookbackWeeks) document.getElementById('lookbackWeeks').value = o.lookbackWeeks;
+      if (o.wipLimit) document.getElementById('wipLimit').value = o.wipLimit;
+      if (o.staleDays) document.getElementById('staleDays').value = o.staleDays;
+      if (o.mttrWarn) document.getElementById('mttrWarn').value = o.mttrWarn;
+      if (o.mttrBad) document.getElementById('mttrBad').value = o.mttrBad;
+      if (o.effWarn) document.getElementById('effWarn').value = o.effWarn;
+      if (o.effBad) document.getElementById('effBad').value = o.effBad;
+      if (o.workItemTypes != null) { document.getElementById('workItemTypes').value = o.workItemTypes; restoredTypes = true; }
+    } catch (e) {}
+  }
+  if (savedChoice && !restoredTypes) applyDefaultWorkItemTypes();
+})();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+})();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+function field(item, name, def = '') {
+  if (!name) return def;
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+function buildAreaClause(teamFieldValues) {
+  if (!teamFieldValues || !teamFieldValues.values || !teamFieldValues.values.length) return null;
+  const parts = teamFieldValues.values.map(v => {
+    const esc = v.value.replace(/'/g, "''");
+    return v.includeChildren ? `[System.AreaPath] UNDER '${esc}'` : `[System.AreaPath] = '${esc}'`;
+  });
+  return `(${parts.join(' OR ')})`;
+}
+
+// Same literal-state belt-and-suspenders approach used elsewhere in this
+// console — ADO's own state-category metadata has been wrong before here.
+const LITERAL_COMPLETED_STATES = ['closed', 'done'];
+const LITERAL_REMOVED_STATES = ['removed'];
+function resolveCategory(typeStateMap, wit, state) {
+  const sLower = (state || '').toLowerCase();
+  if (LITERAL_COMPLETED_STATES.includes(sLower)) return 'Completed';
+  if (LITERAL_REMOVED_STATES.includes(sLower)) return 'Removed';
+  return (typeStateMap[wit] || {})[state] || '';
+}
+function isOpenItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  return cat !== 'Completed' && cat !== 'Removed';
+}
+function isInProgressItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  return resolveCategory(typeStateMapGlobal, wit, state) === 'InProgress';
+}
+function isCompletedItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  return resolveCategory(typeStateMapGlobal, wit, state) === 'Completed';
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// Walks revision history once per item and returns everything this page
+// needs from it in a single pass: the actual Completed-transition date
+// (NOT System.ChangedDate, which any field edit bumps — see the other
+// report pages in this console for the same bug and fix) and whether the
+// item was ever reopened (moved out of Completed back to an active state).
+async function analyzeHistory(item, base) {
+  const wit = field(item, 'System.WorkItemType');
+  try {
+    const data = await adoGet(`${base}/_apis/wit/workitems/${item.id}/updates?api-version=7.1`);
+    let completionDate = null;
+    let wasCompleted = false;
+    let reopened = false;
+    (data.value || []).forEach(rev => {
+      const sc = rev.fields && rev.fields['System.State'];
+      const newState = sc && sc.newValue;
+      if (!newState) return;
+      const cat = resolveCategory(typeStateMapGlobal, wit, newState);
+      if (cat === 'Completed') {
+        wasCompleted = true;
+        completionDate = rev.fields['System.ChangedDate'] ? rev.fields['System.ChangedDate'].newValue : completionDate;
+      } else if (wasCompleted && cat !== 'Removed') {
+        reopened = true;
+        wasCompleted = false;
+      }
+    });
+    return { completionDate, reopened };
+  } catch (e) {
+    return { completionDate: null, reopened: false };
+  }
+}
+
+const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
+                'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath'];
+
+async function loadReview() {
+  clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const areaDev = document.getElementById('areaDev').value.trim();
+  const areaQA = document.getElementById('areaQA').value.trim();
+  const areaAnalysis = document.getElementById('areaAnalysis').value.trim();
+  const teamChoice = document.getElementById('teamChoice').value;
+  const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
+  const teamName = teamMap[teamChoice];
+
+  const lookbackWeeks = Math.max(2, parseInt(document.getElementById('lookbackWeeks').value, 10) || 8);
+  const wipLimit = Math.max(1, parseInt(document.getElementById('wipLimit').value, 10) || 3);
+  const staleDays = Math.max(1, parseInt(document.getElementById('staleDays').value, 10) || 5);
+  const mttrWarn = parseFloat(document.getElementById('mttrWarn').value) || 7;
+  const mttrBad = parseFloat(document.getElementById('mttrBad').value) || 14;
+  const effWarn = parseFloat(document.getElementById('effWarn').value) || 70;
+  const effBad = parseFloat(document.getElementById('effBad').value) || 50;
+  const workItemTypes = document.getElementById('workItemTypes').value.split(',').map(t => t.trim()).filter(Boolean);
+
+  if (!org || !project || !pat || !teamName) {
+    showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
+    return;
+  }
+  storage.set('ado-resource-review-teamchoice', teamChoice);
+  storage.set('ado-resource-review-options', JSON.stringify({ lookbackWeeks, wipLimit, staleDays, mttrWarn, mttrBad, effWarn, effBad, workItemTypes: document.getElementById('workItemTypes').value }));
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const teamBase = `${base}/${project}/${encodeURIComponent(teamName)}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+    typeStateMapGlobal = typeStateMap;
+
+    setStatus(`Looking up ${teamChoice} team's area path...`);
+    let teamFieldValues = null;
+    try {
+      teamFieldValues = await adoGet(`${teamBase}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`);
+    } catch (e) {
+      showError(`Couldn't find team "${teamName}" — check the exact team name (Project Settings → Teams).`);
+      setStatus(''); btn.disabled = false; return;
+    }
+    const areaClause = buildAreaClause(teamFieldValues);
+    if (!areaClause) {
+      showError(`Team "${teamName}" has no area path configured — nothing to scope this to.`);
+      setStatus(''); btn.disabled = false; return;
+    }
+
+    setStatus('Finding current sprint...');
+    let currentIteration = null;
+    try {
+      const curData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
+      currentIteration = (curData.value || [])[0] || null;
+    } catch (e) { currentIteration = null; }
+
+    const typeClause = workItemTypes.length
+      ? `AND [System.WorkItemType] IN (${workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})`
+      : '';
+    const notTypeClause = workItemTypes.length
+      ? `AND [System.WorkItemType] NOT IN (${workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})`
+      : null;
+
+    setStatus('Fetching in-scope open items for this team...');
+    const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${typeClause}
+              ORDER BY [System.CreatedDate] ASC`, 'Open items for team');
+    const allTeamItems = await getItems(base, openWiql.workItems.map(w => w.id), FIELDS);
+    const openItems = allTeamItems.filter(isOpenItem);
+
+    setStatus('Checking for out-of-scope work...');
+    let outOfScopeOpenItems = [];
+    if (notTypeClause) {
+      const oosWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${notTypeClause}
+              ORDER BY [System.CreatedDate] ASC`, 'Out-of-scope items for team');
+      const oosRaw = await getItems(base, oosWiql.workItems.map(w => w.id), FIELDS);
+      outOfScopeOpenItems = oosRaw.filter(isOpenItem);
+    }
+
+    setStatus('Fetching recent completions (for MTTR)...');
+    const lookbackDays = lookbackWeeks * 7;
+    const changedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${typeClause}
+              AND [System.ChangedDate] >= @Today - ${lookbackDays}
+              ORDER BY [System.ChangedDate] DESC`, 'Recently changed items for team');
+    const recentChangedItems = await getItems(base, changedWiql.workItems.map(w => w.id), FIELDS);
+    // completed-now items in the window drive MTTR; the full recently-changed
+    // set (completed or not) is scanned for reopens, capped to keep the
+    // number of revision-history calls sane on a busy team.
+    const completedInWindow = recentChangedItems.filter(isCompletedItem);
+    const HISTORY_CAP = 250;
+    const toScanForReopen = recentChangedItems.slice(0, HISTORY_CAP);
+
+    setStatus('Walking revision history (MTTR + reopens)...');
+    const completedHistory = await mapWithConcurrency(completedInWindow, 5, it => analyzeHistory(it, base));
+    const scannedIds = new Set(completedInWindow.map(it => it.id));
+    const stillToScan = toScanForReopen.filter(it => !scannedIds.has(it.id));
+    const otherHistory = await mapWithConcurrency(stillToScan, 5, it => analyzeHistory(it, base));
+
+    lastState = {
+      teamChoice, teamName, openItems, outOfScopeOpenItems, currentIteration, lookbackWeeks, wipLimit, staleDays,
+      mttrWarn, mttrBad, effWarn, effBad,
+      completedInWindow, completedHistory, stillToScan, otherHistory,
+    };
+
+    setStatus('Scoring resources...');
+    computeAndRender();
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — check the PAT has Work Items (Read) scope.');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const label = err.label ? `<strong>Step:</strong> ${err.label}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      showError(`<strong>${err.message.replace('HTTP_', 'HTTP ')}.</strong><br>${label}${detail}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function isUnallocatedPoolPath(path) {
+  return !!path && path.toLowerCase().includes('unallocated pool');
+}
+
+function computeAndRender() {
+  const { openItems, outOfScopeOpenItems, currentIteration, wipLimit, staleDays,
+          mttrWarn, mttrBad, effWarn, effBad, completedInWindow, completedHistory, stillToScan, otherHistory } = lastState;
+
+  const byPerson = {};
+  function ensurePerson(name) {
+    if (!byPerson[name]) {
+      byPerson[name] = {
+        name, planned: 0, completed: 0, outOfScope: 0, wipCount: 0, staleCount: 0,
+        reopenedCount: 0, resolutionDays: [],
+      };
+    }
+    return byPerson[name];
+  }
+
+  // Planned this week = in-scope items currently sitting in the team's
+  // current sprint iteration. "Completed" (below) draws from the same
+  // iteration so the two numbers are directly comparable for efficiency.
+  const currentPath = currentIteration ? currentIteration.path : null;
+
+  openItems.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const p = ensurePerson(assignee);
+    const path = field(it, 'System.IterationPath');
+    if (currentPath && path === currentPath && !isUnallocatedPoolPath(path)) p.planned++;
+    if (isInProgressItem(it)) p.wipCount++;
+    const changedDaysAgo = daysAgo(field(it, 'System.ChangedDate'));
+    if (changedDaysAgo != null && changedDaysAgo >= staleDays) p.staleCount++;
+  });
+
+  outOfScopeOpenItems.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    ensurePerson(assignee).outOfScope++;
+  });
+
+  // Completed-in-sprint count, per person, for the current iteration only —
+  // same "planned" denominator as above, so efficiency compares like with like.
+  completedInWindow.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const path = field(it, 'System.IterationPath');
+    if (currentPath && path === currentPath) ensurePerson(assignee).completed++;
+  });
+
+  // MTTR: resolution time (created -> actual completion date from history)
+  // for everything completed in the lookback window, regardless of sprint.
+  completedInWindow.forEach((it, i) => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const hist = completedHistory[i];
+    if (!hist || !hist.completionDate) return;
+    const created = field(it, 'System.CreatedDate');
+    if (!created) return;
+    const days = (new Date(hist.completionDate) - new Date(created)) / 86400000;
+    if (days >= 0) ensurePerson(assignee).resolutionDays.push(days);
+    if (hist.reopened) ensurePerson(assignee).reopenedCount++;
+  });
+  stillToScan.forEach((it, i) => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const hist = otherHistory[i];
+    if (hist && hist.reopened) ensurePerson(assignee).reopenedCount++;
+  });
+
+  const results = Object.values(byPerson).map(p => {
+    const mttrDays = p.resolutionDays.length
+      ? p.resolutionDays.reduce((a, b) => a + b, 0) / p.resolutionDays.length
+      : null;
+    const efficiencyPct = p.planned > 0 ? (p.completed / p.planned) * 100 : (p.completed > 0 ? 100 : null);
+    return {
+      name: p.name, planned: p.planned, completed: p.completed, outOfScope: p.outOfScope,
+      mttrDays, efficiencyPct, wipCount: p.wipCount, staleCount: p.staleCount, reopenedCount: p.reopenedCount,
+      suggestion: buildSuggestion(p, mttrDays, efficiencyPct, wipLimit, mttrWarn, mttrBad, effWarn, effBad),
+    };
+  });
+
+  lastResults = results;
+  renderOverview(results, currentIteration);
+  renderTable();
+}
+
+// Priority order: overload first (it explains most of the other symptoms),
+// then speed, then commitment follow-through, then scope drift, then
+// quality (reopens), then simple neglect (stale) — falls through to an
+// all-clear once nothing crosses a threshold.
+function buildSuggestion(p, mttrDays, efficiencyPct, wipLimit, mttrWarn, mttrBad, effWarn, effBad) {
+  if (p.wipCount > wipLimit) {
+    return `Over WIP limit (${p.wipCount}/${wipLimit}) — reduce concurrent items so existing work gets finished before more starts.`;
+  }
+  if (mttrDays != null && mttrDays >= mttrBad) {
+    return `MTTR is high (${mttrDays.toFixed(1)}d) — check for blockers or break large items into smaller pieces.`;
+  }
+  if (efficiencyPct != null && p.planned > 0 && efficiencyPct <= effBad) {
+    return `Only ${efficiencyPct.toFixed(0)}% of this week's planned items are done — revisit the sprint commitment or check for blockers.`;
+  }
+  if (p.outOfScope >= 3) {
+    return `Carrying ${p.outOfScope} out-of-scope item(s) — confirm this allocation with the team lead; it may be crowding out planned work.`;
+  }
+  if (p.reopenedCount >= 2) {
+    return `${p.reopenedCount} item(s) reopened recently — add a review step before marking items complete.`;
+  }
+  if (mttrDays != null && mttrDays >= mttrWarn) {
+    return `MTTR trending up (${mttrDays.toFixed(1)}d) — worth a check-in before it becomes a pattern.`;
+  }
+  if (efficiencyPct != null && p.planned > 0 && efficiencyPct <= effWarn) {
+    return `Completion rate (${efficiencyPct.toFixed(0)}%) is a little behind — keep an eye on it.`;
+  }
+  if (p.staleCount > 0) {
+    return `${p.staleCount} item(s) untouched for a while — a quick status check-in would help.`;
+  }
+  if (p.outOfScope > 0) {
+    return `${p.outOfScope} out-of-scope item(s) allocated — worth confirming it's intentional.`;
+  }
+  return 'On track — no action needed this week.';
+}
+
+function badgeFor(kind, value, warn, bad, higherIsBetter) {
+  if (value == null) return '<span class="badge badge-muted">—</span>';
+  const isBad = higherIsBetter ? value <= bad : value >= bad;
+  const isWarn = higherIsBetter ? value <= warn : value >= warn;
+  const cls = isBad ? 'badge-bad' : isWarn ? 'badge-warn' : 'badge-good';
+  return `<span class="badge ${cls}">${kind === 'pct' ? value.toFixed(0) + '%' : value.toFixed(1)}</span>`;
+}
+
+function renderOverview(results, currentIteration) {
+  const grid = document.getElementById('overview-stats');
+  grid.style.display = 'grid';
+  const withMttr = results.filter(r => r.mttrDays != null);
+  const avgMttr = withMttr.length ? withMttr.reduce((a, r) => a + r.mttrDays, 0) / withMttr.length : null;
+  const withEff = results.filter(r => r.efficiencyPct != null && r.planned > 0);
+  const avgEff = withEff.length ? withEff.reduce((a, r) => a + r.efficiencyPct, 0) / withEff.length : null;
+  const totalOos = results.reduce((a, r) => a + r.outOfScope, 0);
+  const needsAttention = results.filter(r => r.suggestion.indexOf('On track') === -1).length;
+  grid.innerHTML = `
+    <div class="stat"><div class="num">${results.length}</div><div class="label">Resources reviewed</div></div>
+    <div class="stat"><div class="num">${currentIteration ? currentIteration.name : '—'}</div><div class="label">Current sprint</div></div>
+    <div class="stat"><div class="num">${avgEff != null ? avgEff.toFixed(0) + '%' : '—'}</div><div class="label">Avg efficiency</div></div>
+    <div class="stat"><div class="num">${avgMttr != null ? avgMttr.toFixed(1) + 'd' : '—'}</div><div class="label">Avg MTTR</div></div>
+    <div class="stat ${totalOos ? 'stat-warn' : ''}"><div class="num">${totalOos}</div><div class="label">Out-of-scope items</div></div>
+    <div class="stat ${needsAttention ? 'stat-warn' : ''}"><div class="num">${needsAttention}</div><div class="label">Need attention</div></div>
+  `;
+}
+
+function sortBy(key) {
+  sortState = sortState.key === key ? { key, dir: -sortState.dir } : { key, dir: 1 };
+  renderTable();
+}
+
+function renderTable() {
+  const sec = document.getElementById('sec-table');
+  sec.style.display = 'block';
+  const { mttrWarn, mttrBad, effWarn, effBad, wipLimit } = lastState;
+  document.getElementById('meta-table').textContent =
+    `${lastResults.length} resource(s) with open or recently-completed work in ${lastState.teamChoice}. ` +
+    `Planned/Completed are scoped to the current sprint; MTTR covers the last ${lastState.lookbackWeeks} week(s).`;
+
+  const sorted = lastResults.slice().sort((a, b) => {
+    const av = a[sortState.key], bv = b[sortState.key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'string') return av.localeCompare(bv) * sortState.dir;
+    return (av - bv) * sortState.dir;
+  });
+
+  document.getElementById('rows-table').innerHTML = sorted.length
+    ? sorted.map(r => {
+        const effBadge = r.planned > 0 ? badgeFor('pct', r.efficiencyPct, effWarn, effBad, true) : '<span class="badge badge-muted">no items planned</span>';
+        const mttrBadge = badgeFor('num', r.mttrDays, mttrWarn, mttrBad, false);
+        const wipBadge = `<span class="badge ${r.wipCount > wipLimit ? 'badge-bad' : 'badge-good'}">${r.wipCount}</span>`;
+        const oosBadge = r.outOfScope > 0 ? `<span class="badge badge-warn">${r.outOfScope}</span>` : `<span class="badge badge-muted">0</span>`;
+        const staleBadge = r.staleCount > 0 ? `<span class="badge badge-warn">${r.staleCount}</span>` : `<span class="badge badge-muted">0</span>`;
+        const reopenBadge = r.reopenedCount > 0 ? `<span class="badge badge-bad">${r.reopenedCount}</span>` : `<span class="badge badge-muted">0</span>`;
+        return `<tr>
+          <td><strong>${r.name}</strong></td>
+          <td>${r.planned}</td>
+          <td>${r.completed}</td>
+          <td>${effBadge}</td>
+          <td>${oosBadge}</td>
+          <td>${mttrBadge}</td>
+          <td>${wipBadge}</td>
+          <td>${staleBadge}</td>
+          <td>${reopenBadge}</td>
+          <td class="suggestion-cell">${r.suggestion}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="10" class="empty">No resources with in-scope work found for this team</td></tr>`;
+}
+
+async function copyReport() {
+  if (!lastResults.length) { setStatus('Load a team first.'); return; }
+  const dateStr = new Date().toISOString().slice(0, 10);
+  let text = `RESOURCE REVIEW — ${lastState.teamChoice} — ${dateStr}\n`;
+  text += `Sprint: ${lastState.currentIteration ? lastState.currentIteration.name : 'unknown'}\n\n`;
+  lastResults.forEach(r => {
+    text += `${r.name}\n`;
+    text += `  Planned: ${r.planned}  Completed: ${r.completed}  Efficiency: ${r.planned > 0 ? r.efficiencyPct.toFixed(0) + '%' : 'n/a'}\n`;
+    text += `  Out-of-scope: ${r.outOfScope}  MTTR: ${r.mttrDays != null ? r.mttrDays.toFixed(1) + 'd' : 'n/a'}  WIP: ${r.wipCount}  Stale: ${r.staleCount}  Reopened: ${r.reopenedCount}\n`;
+    text += `  Suggestion: ${r.suggestion}\n\n`;
+  });
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('Copied summary to clipboard.');
+  } catch (e) {
+    setStatus('Clipboard blocked by the browser.');
+  }
+}
+</script>
+</body>
+</html>
