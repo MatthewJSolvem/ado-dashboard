@@ -66,6 +66,9 @@
   .badge-warn { background: var(--warn-bg); color: var(--warn); }
   .badge-muted { background: #eceff1; color: var(--muted); }
   .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .banner { border-radius: 2px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+  .banner-critical { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; }
+  .banner-critical h3 { margin: 0 0 8px 0; font-size: 14px; }
   .suggestion-cell { max-width: 280px; white-space: normal; font-size: 12px; line-height: 1.4; }
   th.sortable { cursor: pointer; user-select: none; }
   th.sortable:after { content: ' \2195'; opacity: 0.4; font-size: 10px; }
@@ -135,6 +138,11 @@
   </div>
 
   <div id="error"></div>
+
+  <div id="banner-scope-warning" class="banner banner-critical" style="display:none">
+    <h3>⚠ In-scope work item types may not match this team's real data</h3>
+    <div id="banner-scope-warning-text"></div>
+  </div>
 
   <div id="overview-stats" class="grid" style="display:none"></div>
 
@@ -440,6 +448,24 @@ async function loadReview() {
       ? `AND [System.WorkItemType] NOT IN (${workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})`
       : null;
 
+    // Sprint items are fetched as their own query, scoped directly by
+    // IterationPath, rather than filtered out of the open-items set below —
+    // that set deliberately excludes Completed/Removed items (it drives WIP),
+    // so reusing it here would silently drop anything already finished this
+    // sprint from the "Planned" count. This query includes every state, so
+    // Planned reflects the full sprint commitment and Completed is a subset.
+    let sprintItems = [];
+    if (currentIteration) {
+      setStatus('Fetching current sprint items...');
+      const sprintWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${typeClause}
+              AND [System.IterationPath] = '${currentIteration.path.replace(/'/g, "''")}'
+              ORDER BY [System.CreatedDate] ASC`, 'Current sprint items for team');
+      sprintItems = await getItems(base, sprintWiql.workItems.map(w => w.id), FIELDS);
+    }
+
     setStatus('Fetching in-scope open items for this team...');
     const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = '${project}'
@@ -484,7 +510,7 @@ async function loadReview() {
     const otherHistory = await mapWithConcurrency(stillToScan, 5, it => analyzeHistory(it, base));
 
     lastState = {
-      teamChoice, teamName, openItems, outOfScopeOpenItems, currentIteration, lookbackWeeks, wipLimit, staleDays,
+      teamChoice, teamName, openItems, outOfScopeOpenItems, sprintItems, currentIteration, lookbackWeeks, wipLimit, staleDays,
       mttrWarn, mttrBad, effWarn, effBad,
       completedInWindow, completedHistory, stillToScan, otherHistory,
     };
@@ -515,7 +541,7 @@ function isUnallocatedPoolPath(path) {
 }
 
 function computeAndRender() {
-  const { openItems, outOfScopeOpenItems, currentIteration, wipLimit, staleDays,
+  const { openItems, outOfScopeOpenItems, sprintItems, currentIteration, wipLimit, staleDays,
           mttrWarn, mttrBad, effWarn, effBad, completedInWindow, completedHistory, stillToScan, otherHistory } = lastState;
 
   const byPerson = {};
@@ -529,17 +555,23 @@ function computeAndRender() {
     return byPerson[name];
   }
 
-  // Planned this week = in-scope items currently sitting in the team's
-  // current sprint iteration. "Completed" (below) draws from the same
-  // iteration so the two numbers are directly comparable for efficiency.
-  const currentPath = currentIteration ? currentIteration.path : null;
+  // Planned/Completed this sprint — from the dedicated sprint-scoped query,
+  // which includes every state (not just open), so a finished sprint item
+  // still counts toward the commitment instead of vanishing from "Planned".
+  sprintItems.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const p = ensurePerson(assignee);
+    p.planned++;
+    if (isCompletedItem(it)) p.completed++;
+  });
 
+  // WIP / stale come from the separate open-items pool (in-scope, not-yet-
+  // done items), independent of sprint membership.
   openItems.forEach(it => {
     const assignee = field(it, 'System.AssignedTo', '');
     if (!assignee) return;
     const p = ensurePerson(assignee);
-    const path = field(it, 'System.IterationPath');
-    if (currentPath && path === currentPath && !isUnallocatedPoolPath(path)) p.planned++;
     if (isInProgressItem(it)) p.wipCount++;
     const changedDaysAgo = daysAgo(field(it, 'System.ChangedDate'));
     if (changedDaysAgo != null && changedDaysAgo >= staleDays) p.staleCount++;
@@ -549,15 +581,6 @@ function computeAndRender() {
     const assignee = field(it, 'System.AssignedTo', '');
     if (!assignee) return;
     ensurePerson(assignee).outOfScope++;
-  });
-
-  // Completed-in-sprint count, per person, for the current iteration only —
-  // same "planned" denominator as above, so efficiency compares like with like.
-  completedInWindow.forEach(it => {
-    const assignee = field(it, 'System.AssignedTo', '');
-    if (!assignee) return;
-    const path = field(it, 'System.IterationPath');
-    if (currentPath && path === currentPath) ensurePerson(assignee).completed++;
   });
 
   // MTTR: resolution time (created -> actual completion date from history)
@@ -593,8 +616,35 @@ function computeAndRender() {
   });
 
   lastResults = results;
+  renderScopeWarning(results, currentIteration);
   renderOverview(results, currentIteration);
   renderTable();
+}
+
+// Surfaces the exact failure mode that's easy to miss otherwise: every
+// person shows 0 planned/completed/WIP while out-of-scope is non-zero for
+// the same people — a near-certain sign the "in-scope work item types"
+// filter doesn't match what this team actually works in, rather than the
+// team genuinely having no open work.
+function renderScopeWarning(results, currentIteration) {
+  const banner = document.getElementById('banner-scope-warning');
+  const totalInScope = results.reduce((a, r) => a + r.planned + r.wipCount, 0);
+  const totalOos = results.reduce((a, r) => a + r.outOfScope, 0);
+  if (!currentIteration) {
+    banner.style.display = 'block';
+    document.getElementById('banner-scope-warning-text').textContent =
+      `No current sprint was returned for this team, so Planned/Completed can't be scoped this week. Check the team has an active iteration set in Project Settings → Iterations.`;
+    return;
+  }
+  if (totalInScope === 0 && totalOos > 0) {
+    banner.style.display = 'block';
+    document.getElementById('banner-scope-warning-text').innerHTML =
+      `Every resource shows 0 planned and 0 WIP, but ${totalOos} out-of-scope item(s) were found across the team — this usually means the ` +
+      `<strong>"In-scope work item types"</strong> filter (in Review options) doesn't match what this team actually works in, not that there's no work. ` +
+      `Open Review options and check the types listed there, or widen/adjust them, then re-run.`;
+    return;
+  }
+  banner.style.display = 'none';
 }
 
 // Priority order: overload first (it explains most of the other symptoms),
