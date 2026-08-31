@@ -99,12 +99,14 @@
       <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
       <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
       <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
+      <div class="field"><label>Technical Team</label><input id="areaTechnical" placeholder="e.g. Technical Team"></div>
       <div class="field">
         <label>Team to review</label>
         <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
           <option value="Dev">Dev</option>
           <option value="QA">QA</option>
           <option value="Analysis">Analysis</option>
+          <option value="Technical">Technical</option>
         </select>
       </div>
     </div>
@@ -180,7 +182,7 @@ let lastState = null;
 let lastResults = [];
 let sortState = { key: 'efficiencyPct', dir: 1 };
 
-const DEFAULT_TYPES_BY_TEAM = { Dev: 'Bug, Task', QA: 'Bug, Test Case', Analysis: '' };
+const DEFAULT_TYPES_BY_TEAM = { Dev: 'Bug, Task', QA: 'Bug, Test Case', Analysis: '', Technical: '' };
 function applyDefaultWorkItemTypes() {
   const el = document.getElementById('workItemTypes');
   const allDefaults = Object.values(DEFAULT_TYPES_BY_TEAM);
@@ -207,6 +209,7 @@ function applyDefaultWorkItemTypes() {
       document.getElementById('areaDev').value = a.dev || '';
       document.getElementById('areaQA').value = a.qa || '';
       document.getElementById('areaAnalysis').value = a.analysis || '';
+      document.getElementById('areaTechnical').value = a.technical || '';
     } catch (e) {}
   }
   const savedChoice = storage.get('ado-resource-review-teamchoice') || storage.get('ado-capacity-teamchoice');
@@ -380,8 +383,9 @@ async function loadReview() {
   const areaDev = document.getElementById('areaDev').value.trim();
   const areaQA = document.getElementById('areaQA').value.trim();
   const areaAnalysis = document.getElementById('areaAnalysis').value.trim();
+  const areaTechnical = document.getElementById('areaTechnical').value.trim();
   const teamChoice = document.getElementById('teamChoice').value;
-  const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis };
+  const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis, Technical: areaTechnical };
   const teamName = teamMap[teamChoice];
 
   const lookbackWeeks = Math.max(2, parseInt(document.getElementById('lookbackWeeks').value, 10) || 8);
