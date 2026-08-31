@@ -228,10 +228,10 @@
     <div style="height:220px"><canvas id="chart-perf-trend"></canvas></div>
     <div style="color:var(--muted);font-size:11px;margin-top:8px" id="perf-status"></div>
 
-    <h2 style="margin-top:24px">Defect Leakage — this week</h2>
+    <h2 style="margin-top:24px">Defect Leakage — Open</h2>
     <div class="meta" id="meta-leakage"></div>
     <div id="leakage-env-stats" class="grid" style="margin-bottom:16px"></div>
-    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Client</th><th>Developer</th><th>Environment</th><th>Testing Status</th><th>Last Changed</th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Client</th><th>Developer</th><th>Environment</th><th>Testing Status</th><th>Age (days)</th><th>Last Changed</th></tr></thead>
     <tbody id="rows-leakage"></tbody></table></div>
   </section>
 
@@ -804,10 +804,12 @@ async function renderTeamPerformance() {
   if (leakageStatusNote) {
     document.getElementById('meta-leakage').textContent = leakageStatusNote;
     document.getElementById('leakage-env-stats').innerHTML = '';
-    document.getElementById('rows-leakage').innerHTML = '<tr><td colspan="7" class="empty">Not available</td></tr>';
+    document.getElementById('rows-leakage').innerHTML = '<tr><td colspan="8" class="empty">Not available</td></tr>';
   } else {
-    const filteredLeakage = itemsInArea(leakageItems, areaPath)
-      .filter(it => new Date(field(it, 'System.ChangedDate')) >= thisWeekStart);
+    // No date filter here — this now shows every leaked defect that hasn't
+    // been resolved yet (the WIQL query already excludes Completed/Removed
+    // states), regardless of how long ago it leaked.
+    const filteredLeakage = itemsInArea(leakageItems, areaPath);
 
     const envCounts = { Dev: 0, QA: 0, UAT: 0 };
     filteredLeakage.forEach(it => {
@@ -820,26 +822,28 @@ async function renderTeamPerformance() {
       <div class="stat"><div class="num" style="color:var(--warn)">${envCounts.QA}</div><div class="label">Leaked to QA</div></div>
       <div class="stat"><div class="num" style="color:var(--bad)">${envCounts.UAT}</div><div class="label">Leaked to UAT</div></div>
     `;
-    document.getElementById('meta-leakage').textContent = `${filteredLeakage.length} defect(s) this week` +
+    document.getElementById('meta-leakage').textContent = `${filteredLeakage.length} open defect(s) leaked and not yet resolved` +
       (!leakageFieldsFound.client || !leakageFieldsFound.developer
         ? ' (Client and/or Developer field not found on QA Test Case — showing what\'s available)' : '');
 
     document.getElementById('rows-leakage').innerHTML = filteredLeakage.length
       ? filteredLeakage
-          .sort((a, b) => (field(b, 'System.ChangedDate') > field(a, 'System.ChangedDate') ? 1 : -1))
+          // oldest (longest still open) first, so the most neglected leaks surface at the top
+          .sort((a, b) => new Date(field(a, 'System.CreatedDate')) - new Date(field(b, 'System.CreatedDate')))
           .map(it => {
             const status = field(it, leakageFieldsFound.testingStatus, '');
             const env = status.replace('Test Failure - ', '').trim();
             const client = leakageFieldsFound.client ? field(it, leakageFieldsFound.client, '—') : '—';
             const developer = leakageFieldsFound.developer ? field(it, leakageFieldsFound.developer, '—') : '—';
+            const age = daysAgo(field(it, 'System.CreatedDate'));
             const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
             const idCell = workItemBaseUrl
               ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
               : `#${it.id}`;
             return `<tr><td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${client}</td><td>${developer}</td>
-              <td><span class="badge badge-bad">${env}</span></td><td>${status}</td><td>${changed}</td></tr>`;
+              <td><span class="badge badge-bad">${env}</span></td><td>${status}</td><td>${age == null ? '—' : age}</td><td>${changed}</td></tr>`;
           }).join('')
-      : '<tr><td colspan="7" class="empty">No defect leakage this week for this area</td></tr>';
+      : '<tr><td colspan="8" class="empty">No open defect leakage for this area</td></tr>';
   }
 }
 
@@ -941,28 +945,24 @@ function renderInsights(d) {
     }
   }
 
-  // Defect leakage hot spot
+  // Defect leakage hot spot — now reflects everything still open (not just
+  // this week), matching the Defect Leakage section above.
   if (!d.leakageStatusNote && d.leakageItems && d.leakageItems.length > 0) {
-    const now3 = new Date();
-    const dsm3 = (now3.getDay() + 6) % 7;
-    const weekStart3 = new Date(now3.getTime() - dsm3 * 86400000);
-    const thisWeekLeaks = d.leakageItems.filter(it => new Date(field(it, 'System.ChangedDate')) >= weekStart3);
-    if (thisWeekLeaks.length > 0) {
-      const envCounts = {};
-      thisWeekLeaks.forEach(it => {
-        const status = field(it, d.leakageFieldsFound.testingStatus, '');
-        const env = status.replace('Test Failure - ', '').trim();
-        envCounts[env] = (envCounts[env] || 0) + 1;
-      });
-      const topEnv = Object.entries(envCounts).sort((a, b) => b[1] - a[1])[0];
-      const uatLeak = envCounts['UAT'] || 0;
-      insights.push({
-        severity: uatLeak > 0 ? 'bad' : 'warn',
-        text: `${thisWeekLeaks.length} defect(s) leaked this week` +
-          (topEnv ? `, most caught in <strong>${topEnv[0]}</strong> (${topEnv[1]}).` : '.') +
-          (uatLeak > 0 ? ` <strong>${uatLeak} reached UAT</strong> — these escaped both Dev and QA testing, the most expensive stage to catch defects.` : ''),
-      });
-    }
+    const openLeaks = d.leakageItems;
+    const envCounts = {};
+    openLeaks.forEach(it => {
+      const status = field(it, d.leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      envCounts[env] = (envCounts[env] || 0) + 1;
+    });
+    const topEnv = Object.entries(envCounts).sort((a, b) => b[1] - a[1])[0];
+    const uatLeak = envCounts['UAT'] || 0;
+    insights.push({
+      severity: uatLeak > 0 ? 'bad' : 'warn',
+      text: `${openLeaks.length} open defect(s) leaked and not yet resolved` +
+        (topEnv ? `, most caught in <strong>${topEnv[0]}</strong> (${topEnv[1]}).` : '.') +
+        (uatLeak > 0 ? ` <strong>${uatLeak} reached UAT</strong> — these escaped both Dev and QA testing, the most expensive stage to catch defects.` : ''),
+    });
   }
 
   // Sprint risk
@@ -1004,7 +1004,7 @@ async function copyForAIAnalysis() {
       const env = status.replace('Test Failure - ', '').trim();
       envCounts[env] = (envCounts[env] || 0) + 1;
     });
-    leakageSection = Object.entries(envCounts).map(([e, c]) => `  ${e}: ${c}`).join('\n') || '  (none this period)';
+    leakageSection = Object.entries(envCounts).map(([e, c]) => `  ${e}: ${c}`).join('\n') || '  (none currently open)';
   }
 
   const prompt =
@@ -1028,7 +1028,7 @@ ${areaLines}
 === BACKLOG AGE DISTRIBUTION (bugs + issues + carryover) ===
 ${ageLines}
 
-=== DEFECT LEAKAGE BY ENVIRONMENT (Test Failure - Dev/QA/UAT) ===
+=== DEFECT LEAKAGE BY ENVIRONMENT (Test Failure - Dev/QA/UAT, currently open/unresolved) ===
 ${leakageSection}
 
 === BLOCKED ITEMS (sample, up to 15) ===
@@ -1109,12 +1109,12 @@ async function loadDashboard() {
       leakageFieldsFound = { testingStatus: testingStatusField, client: clientField, developer: developerField };
 
       if (testingStatusField) {
-        const leakageFieldList = ['System.Id', 'System.Title', 'System.ChangedDate', 'System.AreaPath', testingStatusField, clientField, developerField].filter(Boolean);
+        const leakageFieldList = ['System.Id', 'System.Title', 'System.State', 'System.CreatedDate', 'System.ChangedDate', 'System.AreaPath', testingStatusField, clientField, developerField].filter(Boolean);
         const leakWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
                   WHERE [System.TeamProject] = '${project}'
                   AND [System.WorkItemType] = 'QA Test Case'
                   AND [${testingStatusField}] IN ('Test Failure - Dev','Test Failure - QA','Test Failure - UAT')
-                  AND [System.ChangedDate] >= @Today - 27
+                  AND NOT (${removedOrCompleted})
                   ORDER BY [System.ChangedDate] DESC`, 'Defect leakage (QA Test Case)');
         leakageItems = await getItems(base, leakWiql.workItems.map(w => w.id), leakageFieldList);
       } else {
