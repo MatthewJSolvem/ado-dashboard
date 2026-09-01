@@ -104,10 +104,10 @@
       <input type="checkbox" id="remember">
     </div>
     <div class="config-grid">
-      <div class="field"><label>Dev Team</label><input id="areaDev" placeholder="e.g. Development V2 - Mark Jones Team"></div>
-      <div class="field"><label>QA Team</label><input id="areaQA" placeholder="e.g. QA Test Team"></div>
-      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" placeholder="e.g. Analysis Team"></div>
-      <div class="field"><label>Technical Team</label><input id="areaTechnical" placeholder="e.g. Technical Team"></div>
+      <div class="field"><label>Dev Team</label><input id="areaDev" list="ado-team-options" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+      <div class="field"><label>QA Team</label><input id="areaQA" list="ado-team-options" placeholder="e.g. QA Test Team"></div>
+      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" list="ado-team-options" placeholder="e.g. Analysis Team"></div>
+      <div class="field"><label>Technical Team</label><input id="areaTechnical" list="ado-team-options" placeholder="e.g. Technical Team"></div>
       <div class="field">
         <label>Team to analyze</label>
         <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
@@ -118,11 +118,18 @@
         </select>
       </div>
     </div>
+    <datalist id="ado-team-options"></datalist>
+
+    <div class="actions">
+      <button id="loadTeamsBtn" class="small" style="text-transform:none;background:#fff;color:var(--accent);border:1px solid var(--accent)" onclick="loadAdoTeams()">Load ADO teams (autocomplete)</button>
+      <span id="team-load-status" style="font-size:12px;color:var(--muted)"></span>
+    </div>
 
     <div class="actions">
       <button id="loadBtn" onclick="loadCapacity()">Analyze Team</button>
       <button type="button" class="small" onclick="copyReport()">Copy summary report</button>
       <span id="status"></span>
+      <span id="reviewing-team-badge" style="font-size:12px;color:var(--muted)"></span>
       <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
     </div>
 
@@ -542,6 +549,40 @@ const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.Stat
                 'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath',
                 'System.Description'];
 
+// Fetches the project's real ADO team names and offers them as autocomplete
+// suggestions on the four team fields above — the fields stay free-text
+// (so existing saved values keep working), but this makes it easy to pick
+// an exact, current team name instead of one that's stale or mistyped.
+async function loadAdoTeams() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  if (!org || !project || !pat) {
+    showError('Fill in organization, project, and PAT first, then load teams.');
+    return;
+  }
+  const btn = document.getElementById('loadTeamsBtn');
+  btn.disabled = true;
+  document.getElementById('team-load-status').textContent = 'Loading teams...';
+  try {
+    const base = `https://dev.azure.com/${org}`;
+    const data = await adoGet(`${base}/_apis/projects/${encodeURIComponent(project)}/teams?api-version=7.1`);
+    const teams = data.value || [];
+    document.getElementById('ado-team-options').innerHTML = teams
+      .map(t => `<option value="${t.name.replace(/"/g, '&quot;')}">`).join('');
+    document.getElementById('team-load-status').textContent =
+      `Found ${teams.length} team(s) — start typing in a team field above to see suggestions.`;
+  } catch (err) {
+    document.getElementById('team-load-status').textContent = '';
+    if (err.message === 'CORS_OR_NETWORK') showError('Blocked before reaching Azure DevOps — likely a CORS restriction.');
+    else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') showError('Authentication failed — check the PAT scope.');
+    else showError('Something went wrong loading teams: ' + (err.detail || err.message));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadCapacity() {
   clearError();
   ADOLoader.show('Connecting to Azure DevOps…');
@@ -725,6 +766,7 @@ async function loadCapacity() {
 
     setStatus('Scoring and scheduling...');
     computeAndRender();
+    document.getElementById('reviewing-team-badge').textContent = `Reviewing ADO team "${teamName}" (${teamChoice})`;
     setStatus('Done.');
   } catch (err) {
     if (err.message === 'CORS_OR_NETWORK') {
