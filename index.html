@@ -107,6 +107,7 @@
       <div class="section-toggles">
         <label><input type="checkbox" id="show-insights" checked onchange="saveSectionPrefs()"> Automated insights</label>
         <label><input type="checkbox" id="show-burndown" checked onchange="saveSectionPrefs()"> Sprint burndown status</label>
+        <label><input type="checkbox" id="show-devBurndown" checked onchange="saveSectionPrefs()"> Development sprint burndown</label>
         <label><input type="checkbox" id="show-completed" checked onchange="saveSectionPrefs()"> Completed (24h)</label>
         <label><input type="checkbox" id="show-reopened" checked onchange="saveSectionPrefs()"> Reopened items</label>
         <label><input type="checkbox" id="show-blocked" checked onchange="saveSectionPrefs()"> Blocked items</label>
@@ -143,6 +144,13 @@
     <div class="meta" id="meta-burndown"></div>
     <div style="height:220px"><canvas id="chart-burndown"></canvas></div>
     <div style="color:var(--muted);font-size:11px;margin-top:8px">"Actual" only has one point the first time you run this in a sprint — it fills in day by day as you keep loading the dashboard.</div>
+  </section>
+
+  <section id="sec-dev-burndown">
+    <h2>Development sprint burndown</h2>
+    <div class="meta" id="meta-dev-burndown"></div>
+    <div style="height:220px"><canvas id="chart-dev-burndown"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px" id="dev-burndown-footnote">"Actual" only has one point the first time you run this in a sprint — it fills in day by day as you keep loading the dashboard.</div>
   </section>
 
   <section id="sec-completion-trend">
@@ -287,7 +295,7 @@
 let lastReport = null; // populated after a successful load, used by sendReport()
 let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
 const AGING_THRESHOLD_DAYS = 5;
-const SECTION_KEYS = ['insights','burndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge','comments'];
+const SECTION_KEYS = ['insights','burndown','devBurndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge','comments'];
 
 // ---- tiny storage wrapper: plain localStorage, so this works the same
 // whether opened as a local file or hosted somewhere like GitHub Pages ----
@@ -969,6 +977,9 @@ function renderInsights(d) {
   if (d.burndownStatusLabel === 'At risk') {
     insights.push({ severity: 'bad', text: `Current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
   }
+  if (d.devBurndownStatusLabel === 'At risk') {
+    insights.push({ severity: 'bad', text: `Development's current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
+  }
 
   // Unanswered comments
   if (d.commentRows && d.commentRows.length) {
@@ -1013,6 +1024,7 @@ async function copyForAIAnalysis() {
 === SUMMARY ===
 Completed (24h): ${r.completedItems.length}
 Current sprint: ${r.sprintItems.length} item(s), status: ${r.burndownStatusLabel}
+Development sprint (${r.devCurrentIterName}): ${r.devSprintItems ? r.devSprintItems.length : 0} item(s), status: ${r.devBurndownStatusLabel || 'unknown'}
 Carried over from previous sprint: ${r.carryoverItems.length}
 Open bugs: ${r.bugItems.length}
 Open issues: ${r.issueItems.length}
@@ -1071,6 +1083,14 @@ async function loadDashboard() {
     storage.set('ado-config', JSON.stringify({ org, project, team, recipient }));
   }
   saveSectionPrefs();
+
+  // Development's own team name, shared with Team Capacity Planner / Resource
+  // Review's config (same localStorage key) so it doesn't need re-entering here.
+  let devTeamName = '';
+  try {
+    const raw = storage.get('ado-capacity-teamnames');
+    if (raw) devTeamName = (JSON.parse(raw).dev || '').trim();
+  } catch (e) {}
 
   const btn = document.getElementById('loadBtn');
   const sendBtn = document.getElementById('sendBtn');
@@ -1137,6 +1157,27 @@ async function loadDashboard() {
       if (past.length) previousIter = past.sort((a, b) => a.attributes.finishDate.localeCompare(b.attributes.finishDate)).pop();
     }
 
+    // Development now runs its own separate sprint calendar (its work moved
+    // out of this team's area/iteration scope), so its current sprint is
+    // looked up against its own team rather than assumed to line up with
+    // this page's main "team" setting. Failure here (team not yet
+    // configured, or its name doesn't match an ADO team) is non-fatal —
+    // the Development burndown card just shows a helpful note instead.
+    let devCurrentIter = null;
+    let devLookupError = '';
+    if (devTeamName) {
+      try {
+        const devTeamBase = `${base}/${project}/${encodeURIComponent(devTeamName)}`;
+        const devCurData = await adoGet(`${devTeamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
+        devCurrentIter = devCurData.value[0] || null;
+        if (!devCurrentIter) devLookupError = `No current sprint found for the "${devTeamName}" team.`;
+      } catch (e) {
+        devLookupError = `Couldn't look up the "${devTeamName}" team — check the name matches exactly (Project Settings → Teams).`;
+      }
+    } else {
+      devLookupError = 'Set the Development team name in Team Capacity Planner or Resource Review to enable this card.';
+    }
+
     const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State',
                     'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate', 'System.IterationPath',
                     'System.AreaPath', 'System.Tags'];
@@ -1177,6 +1218,15 @@ async function loadDashboard() {
                 WHERE [System.TeamProject] = '${project}'
                 AND [System.IterationPath] = '${currentIter.path}'`, 'Current sprint items');
       sprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    let devSprintItems = [];
+    if (devCurrentIter) {
+      setStatus('Fetching Development sprint items...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${devCurrentIter.path.replace(/'/g, "''")}'`, 'Development current sprint items');
+      devSprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
     }
 
     let carryoverItems = [];
@@ -1317,6 +1367,30 @@ async function loadDashboard() {
         <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
     }
 
+    // ---- Development sprint burndown (own separate calendar) ----
+    let devBurndownHtml = devLookupError || 'No active sprint with start/finish dates found.';
+    let devBurndownStatusLabel = 'unknown';
+    let devSprintRemainingToday = null;
+    let devSprintTotalToday = null;
+    if (devCurrentIter && devCurrentIter.attributes && devCurrentIter.attributes.startDate && devCurrentIter.attributes.finishDate) {
+      const start = new Date(devCurrentIter.attributes.startDate);
+      const finish = new Date(devCurrentIter.attributes.finishDate);
+      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
+      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
+      const doneCount = devSprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
+      const remainingCount = devSprintItems.length - doneCount;
+      devSprintRemainingToday = remainingCount;
+      devSprintTotalToday = devSprintItems.length;
+      const expectedRemainingFrac = daysRemaining / totalDays;
+      const actualRemainingFrac = devSprintItems.length ? remainingCount / devSprintItems.length : 0;
+      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
+      devBurndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
+      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
+      devBurndownHtml = `${devCurrentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${devSprintItems.length} item(s) still open —
+        <span class="badge ${badgeClass}">${devBurndownStatusLabel}</span>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
+    }
+
     // ---- day-over-day trend ----
     let statsHistory = {};
     const rawHistory = storage.get('ado-stats-history');
@@ -1329,6 +1403,8 @@ async function loadDashboard() {
       bugs: bugItems.length, issues: issueItems.length,
       sprintPath: currentIter ? currentIter.path : null,
       sprintRemaining: sprintRemainingToday, sprintTotal: sprintTotalToday,
+      devSprintPath: devCurrentIter ? devCurrentIter.path : null,
+      devSprintRemaining: devSprintRemainingToday, devSprintTotal: devSprintTotalToday,
     };
     statsHistory[todayKey] = currentStats;
     const allKeys = Object.keys(statsHistory).sort();
@@ -1380,6 +1456,36 @@ async function loadDashboard() {
         { label: 'Ideal', data: idealData, borderColor: '#9aa1ac', borderDash: [6, 4], pointRadius: 0 },
         { label: 'Actual', data: actualData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.1)', spanGaps: true },
       ]);
+    }
+
+    document.getElementById('sec-dev-burndown').style.display = shown('devBurndown') ? 'block' : 'none';
+    document.getElementById('meta-dev-burndown').innerHTML = devBurndownHtml;
+    if (shown('devBurndown')) {
+      if (devCurrentIter && devCurrentIter.attributes && devCurrentIter.attributes.startDate && devCurrentIter.attributes.finishDate) {
+        document.getElementById('dev-burndown-footnote').style.display = 'block';
+        const bStart = new Date(devCurrentIter.attributes.startDate);
+        const bFinish = new Date(devCurrentIter.attributes.finishDate);
+        const bTotalDays = Math.max(1, Math.round((bFinish - bStart) / 86400000));
+        const idealLabels = [];
+        const idealData = [];
+        for (let d = 0; d <= bTotalDays; d++) {
+          const day = new Date(bStart.getTime() + d * 86400000);
+          idealLabels.push(day.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+          idealData.push(Math.max(0, devSprintTotalToday - (devSprintTotalToday / bTotalDays) * d));
+        }
+        const actualData = idealLabels.map((_, i) => {
+          const dayKey = new Date(bStart.getTime() + i * 86400000).toISOString().slice(0, 10);
+          const point = statsHistory[dayKey];
+          return (point && point.devSprintPath === devCurrentIter.path) ? point.devSprintRemaining : null;
+        });
+        renderLineChart('chart-dev-burndown', idealLabels, [
+          { label: 'Ideal', data: idealData, borderColor: '#9aa1ac', borderDash: [6, 4], pointRadius: 0 },
+          { label: 'Actual', data: actualData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.1)', spanGaps: true },
+        ]);
+      } else {
+        document.getElementById('dev-burndown-footnote').style.display = 'none';
+        if (charts['chart-dev-burndown']) { charts['chart-dev-burndown'].destroy(); delete charts['chart-dev-burndown']; }
+      }
     }
 
     document.getElementById('sec-completion-trend').style.display = shown('completionTrend') ? 'block' : 'none';
@@ -1583,7 +1689,7 @@ async function loadDashboard() {
     if (shown('insights')) {
       renderInsights({
         blockedItems, carryoverItems, workload, areaBreakdown, backlogAgeBuckets,
-        bugItems, issueItems, burndownStatusLabel, leakageItems, leakageFieldsFound, leakageStatusNote,
+        bugItems, issueItems, burndownStatusLabel, devBurndownStatusLabel, leakageItems, leakageFieldsFound, leakageStatusNote,
         commentRows,
       });
     }
@@ -1593,6 +1699,8 @@ async function loadDashboard() {
       reopenedItems, blockedItems, weeklyItems, burndownStatusLabel, sectionPrefs,
       currentIterName: currentIter ? currentIter.name : 'none found',
       previousIterName: previousIter ? previousIter.name : 'no previous sprint found',
+      devSprintItems, devBurndownStatusLabel,
+      devCurrentIterName: devCurrentIter ? devCurrentIter.name : (devLookupError || 'none found'),
       areaBreakdown, backlogAgeBuckets, leakageItems, leakageFieldsFound, leakageStatusNote,
       currentSprintTotal: sprintItems.length,
     };
@@ -1637,6 +1745,7 @@ function sendReport() {
   let body = `ADO MORNING REPORT - ${today}\n\nSUMMARY\n`;
   if (sp.completed) body += `Completed (24h): ${r.completedItems.length}\n`;
   if (sp.sprint) body += `Current sprint (${r.currentIterName}): ${r.sprintItems.length} item(s) - ${r.burndownStatusLabel}\n`;
+  if (sp.devBurndown && r.devSprintItems) body += `Development sprint (${r.devCurrentIterName}): ${r.devSprintItems.length} item(s) - ${r.devBurndownStatusLabel}\n`;
   if (sp.carryover) body += `Carried over from previous sprint (${r.previousIterName}): ${r.carryoverItems.length} item(s)\n`;
   if (sp.weekly) body += `Completed this week: ${r.weeklyItems.length}\n`;
   if (sp.bugs) body += `Open bugs: ${r.bugItems.length}\n`;
