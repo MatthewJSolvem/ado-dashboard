@@ -67,6 +67,37 @@
   .age-green { color: var(--good); font-weight: 700; }
   .age-amber { color: var(--warn); font-weight: 700; }
   .age-red { color: var(--bad); font-weight: 700; }
+  /* --- Work items outside a Master Tracker --- */
+  .ul-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+  .ul-filters .f { display: flex; flex-direction: column; gap: 3px; }
+  .ul-filters label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .ul-filters select, .ul-filters input[type=text] { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+        color: var(--text); padding: 6px 8px; font-size: 13px; font-family: inherit; min-width: 130px; max-width: 220px; }
+  .ul-filters select:focus, .ul-filters input[type=text]:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .ul-breakdowns { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .ul-bd { border: 1px solid var(--border); border-radius: 2px; padding: 10px 12px; }
+  .ul-bd h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--muted); margin: 0 0 8px 0; font-weight: 600; }
+  .ul-bd-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 8px; align-items: center; padding: 3px 4px;
+        cursor: pointer; border-radius: 2px; font-size: 12px; }
+  .ul-bd-row:hover { background: #f5f7fa; }
+  .ul-bd-row.active { background: #e8eaf6; font-weight: 600; }
+  .ul-bd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ul-bd-bar { height: 4px; background: #e8eaf6; border-radius: 2px; margin-top: 3px; }
+  .ul-bd-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+  .ul-bd-count { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ul-bd-more { font-size: 11px; color: var(--muted); padding: 4px 4px 0 4px; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--accent); }
+  th.sortable.sorted::after { content: ' \25B2'; font-size: 9px; }
+  th.sortable.sorted.desc::after { content: ' \25BC'; }
+  tr.ul-group td { background: #eef1f5; font-weight: 600; font-size: 12px; color: var(--accent-dark); border-bottom: 1px solid var(--border); }
+  .ul-sub { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .ul-title { max-width: 340px; }
+  .ul-note { font-size: 12px; color: var(--muted); margin: 0 0 12px 0; }
+  .ul-more { text-align: center; padding: 12px 0 0 0; font-size: 12px; color: var(--muted); }
+  .ul-more button { margin: 0 4px; }
+  #unlinked-error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 12px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.5; display: none; }
 </style>
 </head>
 <body>
@@ -94,6 +125,10 @@
       <div class="field" style="max-width:520px">
         <label>Exclude states from "needing attention" (comma-separated — trackers already in these states are considered handled)</label>
         <input id="excludeStates" value="Ready for Review, Closed">
+      </div>
+      <div class="field" style="max-width:520px;margin-top:10px">
+        <label>Work items outside a Master Tracker — also include items closed in the last (days)</label>
+        <input id="closedWindowDays" type="number" value="30" min="1" max="365" style="max-width:120px">
       </div>
     </details>
   </div>
@@ -175,6 +210,56 @@
       <th>ID</th><th>Title</th><th>Original type</th><th>Current type</th><th>Master Tracker</th><th>Changed by</th><th>Date</th>
     </tr></thead>
     <tbody id="rows-typechanged"></tbody></table></div>
+  </section>
+
+  <section id="sec-unlinked" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>Work items outside a Master Tracker</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="small" onclick="ulCopyList()">Copy list</button>
+        <button type="button" class="small" onclick="ulExportCsv()">Export CSV</button>
+      </div>
+    </div>
+    <div class="meta" id="meta-unlinked"></div>
+    <div id="unlinked-error"></div>
+    <div id="unlinked-stats" class="grid" style="display:none"></div>
+    <div id="unlinked-breakdowns" class="ul-breakdowns"></div>
+
+    <div class="ul-filters" id="unlinked-filters" style="display:none">
+      <div class="f"><label for="ul-q">Search</label><input type="text" id="ul-q" placeholder="ID, title, parent…" oninput="ulOnFilterDebounced()"></div>
+      <div class="f"><label for="ul-status">Status</label><select id="ul-status" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-reason">Parent</label><select id="ul-reason" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-type">Type</label><select id="ul-type" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-area">Area path</label><select id="ul-area" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-assignee">Assigned to</label><select id="ul-assignee" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-createdBy">Created by</label><select id="ul-createdBy" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-suggestion">Suggestion</label><select id="ul-suggestion" onchange="ulOnFilter()"></select></div>
+      <div class="f"><label for="ul-group">Group by</label>
+        <select id="ul-group" onchange="ulOnFilter()">
+          <option value="">None</option><option value="type">Type</option><option value="area">Area path</option>
+          <option value="assignee">Assigned to</option><option value="createdBy">Created by</option>
+          <option value="reason">Parent</option><option value="status">Status</option><option value="suggestion">Suggested Master Tracker</option>
+        </select></div>
+      <div class="f"><label>&nbsp;</label><button type="button" class="small" onclick="ulClearFilters()">Clear filters</button></div>
+    </div>
+
+    <div class="table-wrap"><table id="unlinked-table"><thead><tr>
+      <th class="sortable" data-sort="id">ID</th>
+      <th class="sortable" data-sort="title">Title</th>
+      <th class="sortable" data-sort="type">Type</th>
+      <th class="sortable" data-sort="state">State</th>
+      <th class="sortable" data-sort="reason">Parent</th>
+      <th class="sortable" data-sort="assignee">Assigned to</th>
+      <th class="sortable" data-sort="area">Area path</th>
+      <th class="sortable" data-sort="createdBy">Created by</th>
+      <th class="sortable" data-sort="created">Created</th>
+      <th class="sortable sorted desc" data-sort="age">Age (d)</th>
+      <th class="sortable" data-sort="suggestion">Suggested Master Tracker (best guess)</th>
+    </tr></thead>
+    <tbody id="rows-unlinked"></tbody></table></div>
+    <div class="ul-more" id="unlinked-more"></div>
+    <span id="ul-copy-status" style="font-size:12px;color:var(--muted)"></span>
+    <p class="ul-note">Suggestions are heuristics, not facts: first by walking up the item's parent chain to a Master Tracker, otherwise by matching words in the title against Master Tracker titles. Always confirm in Azure DevOps before re-parenting.</p>
   </section>
 
 <script>
@@ -411,6 +496,7 @@ async function loadReview() {
   const pat = document.getElementById('pat').value.trim();
   const remember = document.getElementById('remember').checked;
   const excludeStates = document.getElementById('excludeStates').value.split(',').map(s => s.trim()).filter(Boolean);
+  const windowDays = Math.min(365, Math.max(1, parseInt(document.getElementById('closedWindowDays').value, 10) || 30));
 
   if (!org || !project || !pat) { showError('Fill in organization, project, and PAT first.'); return; }
   if (remember) {
@@ -525,6 +611,7 @@ async function loadReview() {
       renderCompletedByOther([]);
       renderUndocumented([]);
       renderTypeChanged([]);
+      await loadUnlinked({ base, projectBase, project, typeStateMap, excludeStates, windowDays });
       document.getElementById('stats').style.display = 'none';
       document.getElementById('sec-attention').style.display = 'block';
       document.getElementById('meta-attention').textContent = '0 Master Tracker(s) needing attention';
@@ -609,6 +696,10 @@ async function loadReview() {
       ? Math.round(attention.map(a => daysAgo(a.created)).filter(d => d != null).reduce((s, d) => s + d, 0) / attention.length)
       : null;
     renderTrend(attention.length, avgAgeToday);
+
+    // Added section; contains its own error handling so a failure here
+    // never takes down the rest of the report.
+    await loadUnlinked({ base, projectBase, project, typeStateMap, excludeStates, windowDays });
 
     setStatus('Done.');
   } catch (err) {
@@ -840,6 +931,506 @@ async function copyList() {
   } catch (e) {
     document.getElementById('copy-status').textContent = 'Clipboard blocked by the browser.';
   }
+}
+
+// =====================================================================
+// Work items outside a Master Tracker
+// Finds work items (open, plus recently closed) whose DIRECT parent is not
+// a Master Tracker — either no parent at all, or a parent of another type
+// (e.g. a Task under a Feature). Everything after the initial fetch is
+// client-side: filters, sorting, grouping, copy and CSV export.
+// =====================================================================
+const UL = {
+  rows: [], windowDays: 30, project: '',
+  sortKey: 'age', sortDir: 'desc', limit: 200, groupBy: '',
+  f: { q: '', type: '', status: '', reason: '', area: '', assignee: '', createdBy: '', suggestion: '' },
+};
+const UL_PAGE = 200;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function wiLinkHtml(id, bold) {
+  if (id == null) return '—';
+  return workItemBaseUrl
+    ? `<a href="${workItemBaseUrl}${id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;${bold ? 'font-weight:600' : ''}">#${id}</a>`
+    : `#${id}`;
+}
+function wiqlQuote(s) { return `'${String(s).replace(/'/g, "''")}'`; }
+
+// dimension -> label shown in filters / breakdowns / grouping
+const UL_DIMS = {
+  type: r => r.type || '(none)',
+  area: r => r.areaPath || '(none)',
+  assignee: r => r.assignedTo || 'Unassigned',
+  createdBy: r => r.createdBy || 'Unknown',
+  reason: r => r.reason === 'none' ? 'No parent' : 'Non-MT parent',
+  status: r => r.isClosed ? 'Recently closed' : 'Open',
+  suggestion: r => r.suggestion ? 'Has suggestion' : 'No suggestion',
+};
+const UL_FIXED_OPTS = {
+  status: ['Open', 'Recently closed'],
+  reason: ['No parent', 'Non-MT parent'],
+  suggestion: ['Has suggestion', 'No suggestion'],
+};
+const UL_ALL_LABEL = { status: 'All', reason: 'All', type: 'All types', area: 'All areas', assignee: 'Everyone', createdBy: 'Everyone', suggestion: 'All' };
+
+function ulShortArea(p) {
+  if (!p) return '(none)';
+  if (p === UL.project) return '(project root)';
+  return p.startsWith(UL.project + '\\') ? p.slice(UL.project.length + 1) : p;
+}
+
+// ---- title matching (heuristic suggestions) -------------------------
+const UL_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'are', 'was', 'not', 'new', 'add', 'update',
+  'fix', 'item', 'work', 'task', 'bug', 'issue', 'please', 'need', 'needs', 'after', 'when', 'you', 'your', 'has', 'have', 'all', 'can']);
+function ulTokenize(s) {
+  return (String(s || '').toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => t.length >= 3 && !UL_STOP.has(t));
+}
+function ulBuildTrackerIndex(trackers, isOpenState) {
+  const docs = trackers.map(t => ({
+    id: t.id, title: field(t, 'System.Title'), state: field(t, 'System.State'), area: field(t, 'System.AreaPath'),
+    tokens: new Set(ulTokenize(field(t, 'System.Title'))),
+  }));
+  const df = {}, inv = {};
+  docs.forEach((d, i) => d.tokens.forEach(tk => { df[tk] = (df[tk] || 0) + 1; (inv[tk] = inv[tk] || []).push(i); }));
+  const N = docs.length || 1;
+  return { docs, df, inv, isOpenState, idf: tk => Math.log(1 + N / (1 + (df[tk] || 0))) };
+}
+function ulSuggestByTitle(row, idx) {
+  const toks = [...new Set(ulTokenize(row.title))];
+  if (!toks.length) return null;
+  const total = toks.reduce((s, t) => s + idx.idf(t), 0);
+  if (!total) return null;
+  const acc = {};
+  toks.forEach(t => (idx.inv[t] || []).forEach(i => {
+    const a = acc[i] || (acc[i] = { sum: 0, shared: [] });
+    a.sum += idx.idf(t); a.shared.push(t);
+  }));
+  let best = null;
+  for (const k in acc) {
+    const a = acc[k], d = idx.docs[k];
+    // one shared word is only enough if it's a rare, distinctive one
+    const rare = a.shared.some(t => idx.df[t] <= 3 && t.length >= 4);
+    if (a.shared.length < 2 && !rare) continue;
+    let score = a.sum / total;
+    if (row.areaPath && d.area === row.areaPath) score += 0.1;
+    if (idx.isOpenState(d.state)) score += 0.05;
+    score = Math.min(score, 0.99);
+    if (!best || score > best.score) best = { score, d, shared: a.shared };
+  }
+  if (!best || best.score < 0.35) return null;
+  return { id: best.d.id, title: best.d.title, state: best.d.state, basis: 'title', score: best.score, shared: best.shared };
+}
+
+// ---- parent-chain walk: non-MT parent -> ... -> Master Tracker -------
+async function ulFindAncestorTrackers(base, parentIds, pInfo) {
+  const resolved = {}; // original non-MT parent id -> { id, title, state, depth }
+  let frontier = parentIds.map(id => ({ cur: id, orig: id }));
+  for (let depth = 1; depth <= 4 && frontier.length; depth++) {
+    const curIds = [...new Set(frontier.map(f => f.cur))];
+    const chunks = [];
+    for (let i = 0; i < curIds.length; i += 200) chunks.push(curIds.slice(i, i + 200));
+    const relMaps = await mapWithConcurrency(chunks, 4, async chunk => {
+      const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, $expand: 'relations' });
+      const m = {};
+      (data.value || []).forEach(it => {
+        const rel = (it.relations || []).find(r => r.rel === 'System.LinkTypes.Hierarchy-Reverse');
+        if (rel && rel.url) { const pid = Number(String(rel.url).split('/').pop()); if (pid) m[it.id] = pid; }
+      });
+      return m;
+    });
+    const parentOf = Object.assign({}, ...relMaps.filter(Boolean));
+    const unknown = [...new Set(Object.values(parentOf))].filter(id => !pInfo[id]);
+    if (unknown.length) {
+      (await getItems(base, unknown, ['System.Id', 'System.WorkItemType', 'System.Title', 'System.State']))
+        .forEach(it => { pInfo[it.id] = { id: it.id, type: field(it, 'System.WorkItemType'), title: field(it, 'System.Title'), state: field(it, 'System.State') }; });
+    }
+    const next = [];
+    frontier.forEach(f => {
+      const p = parentOf[f.cur]; const info = p && pInfo[p];
+      if (!info) return;
+      if (info.type === 'Master Tracker') resolved[f.orig] = { id: info.id, title: info.title, state: info.state, depth };
+      else next.push({ cur: p, orig: f.orig });
+    });
+    frontier = next;
+  }
+  return resolved;
+}
+
+// ---- main loader ----------------------------------------------------
+async function loadUnlinked(ctx) {
+  const { base, projectBase, project, typeStateMap, excludeStates, windowDays } = ctx;
+  const sec = document.getElementById('sec-unlinked');
+  const errEl = document.getElementById('unlinked-error');
+  sec.style.display = 'block';
+  errEl.style.display = 'none';
+  document.getElementById('meta-unlinked').textContent = 'Loading…';
+  UL.project = project; UL.windowDays = windowDays;
+  try {
+    // Which states mean "finished"? Category metadata + literal Closed/Done
+    // (ADO's category tagging has been wrong before — see isCompletedState).
+    const allStates = new Set(), completed = new Set(), removed = new Set();
+    Object.values(typeStateMap).forEach(m => Object.entries(m).forEach(([name, cat]) => {
+      allStates.add(name);
+      if (cat === 'Completed') completed.add(name); else if (cat === 'Removed') removed.add(name);
+    }));
+    LITERAL_COMPLETED_STATES.forEach(s => { if (allStates.has(s)) completed.add(s); });
+    const endStates = new Set([...completed, ...removed]);
+    const listOf = set => [...set].map(wiqlQuote).join(',');
+    const stateClause = p => {
+      const open = endStates.size ? `NOT ${p}[System.State] IN (${listOf(endStates)})` : `${p}[System.Id] > 0`;
+      const closed = completed.size ? ` OR (${p}[System.State] IN (${listOf(completed)}) AND ${p}[System.ChangedDate] >= @Today - ${windowDays})` : '';
+      return `(${open}${closed})`;
+    };
+
+    setStatus('Finding work items to check against Master Trackers...');
+    const flat = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = ${wiqlQuote(project)}
+              AND [System.WorkItemType] <> 'Master Tracker'
+              AND ${stateClause('')}`, 'Work items in scope (open + recently closed)');
+    const candidateIds = (flat.workItems || []).map(w => w.id);
+
+    setStatus('Reading parent links...');
+    const links = await wiql(projectBase, `SELECT [System.Id] FROM WorkItemLinks
+              WHERE [Target].[System.TeamProject] = ${wiqlQuote(project)}
+              AND [Target].[System.WorkItemType] <> 'Master Tracker'
+              AND ${stateClause('[Target].')}
+              AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'
+              MODE (MustContain)`, 'Parent links for work items in scope');
+    const childToParent = {};
+    (links.workItemRelations || []).forEach(rel => {
+      if (rel.rel === 'System.LinkTypes.Hierarchy-Forward' && rel.source && rel.target) childToParent[rel.target.id] = rel.source.id;
+    });
+
+    setStatus('Checking parent types...');
+    const pInfo = {};
+    const parentIds = [...new Set(Object.values(childToParent))];
+    (await getItems(base, parentIds, ['System.Id', 'System.WorkItemType', 'System.Title', 'System.State']))
+      .forEach(it => { pInfo[it.id] = { id: it.id, type: field(it, 'System.WorkItemType'), title: field(it, 'System.Title'), state: field(it, 'System.State') }; });
+
+    // Unlinked = no parent at all, or a parent that is not a Master Tracker
+    // (a parent that couldn't be read is treated as non-MT so it still surfaces)
+    const unlinkedIds = candidateIds.filter(id => {
+      const p = childToParent[id];
+      return p == null || !pInfo[p] || pInfo[p].type !== 'Master Tracker';
+    });
+
+    setStatus('Loading unlinked work item details...');
+    const items = await getItems(base, unlinkedIds, ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
+      'System.AreaPath', 'System.CreatedDate', 'System.ChangedDate', 'System.CreatedBy']);
+
+    setStatus('Tracing parent chains to Master Trackers...');
+    const nonMtParents = [...new Set(items.map(it => childToParent[it.id]).filter(p => p != null && pInfo[p] && pInfo[p].type !== 'Master Tracker'))];
+    let chain = {};
+    try { chain = await ulFindAncestorTrackers(base, nonMtParents, pInfo); } catch (e) { chain = {}; }
+
+    setStatus('Loading Master Tracker titles for suggestions...');
+    let trackerIdx = null;
+    try {
+      const mtWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = ${wiqlQuote(project)} AND [System.WorkItemType] = 'Master Tracker'`, 'All Master Trackers (for suggestions)');
+      const trackers = await getItems(base, (mtWiql.workItems || []).map(w => w.id), ['System.Id', 'System.Title', 'System.State', 'System.AreaPath']);
+      const excl = new Set(excludeStates.map(s => s.toLowerCase()));
+      trackerIdx = ulBuildTrackerIndex(trackers, st => !excl.has(String(st).toLowerCase()) && !endStates.has(st));
+    } catch (e) { trackerIdx = null; }
+
+    const rows = items.map(it => {
+      const pid = childToParent[it.id];
+      const info = pid != null ? pInfo[pid] : null;
+      const state = field(it, 'System.State');
+      const created = field(it, 'System.CreatedDate');
+      const row = {
+        id: it.id, title: field(it, 'System.Title'), type: field(it, 'System.WorkItemType'), state,
+        isClosed: endStates.has(state) || isCompletedState(state, field(it, 'System.WorkItemType'), typeStateMap),
+        closedDate: null, changed: field(it, 'System.ChangedDate'),
+        assignedTo: field(it, 'System.AssignedTo', ''), areaPath: field(it, 'System.AreaPath', ''),
+        createdBy: field(it, 'System.CreatedBy', ''), created, age: daysAgo(created),
+        reason: pid == null ? 'none' : 'nonmt',
+        parentId: pid != null ? pid : null,
+        parentType: info ? info.type : '', parentTitle: info ? info.title : '', parentState: info ? info.state : '',
+        suggestion: null,
+      };
+      if (pid != null && chain[pid]) {
+        const m = chain[pid];
+        row.suggestion = { id: m.id, title: m.title, state: m.state, basis: 'chain', score: 1, depth: m.depth };
+      } else if (trackerIdx) {
+        row.suggestion = ulSuggestByTitle(row, trackerIdx);
+      }
+      return row;
+    });
+
+    // Recently-closed: ChangedDate only built the candidate set. Confirm the
+    // real completion date from revision history (ChangedDate is bumped by
+    // any edit) and drop anything that actually closed before the window.
+    const closedRows = rows.filter(r => r.isClosed);
+    if (closedRows.length) {
+      setStatus(`Verifying close dates for ${closedRows.length} closed item(s)...`);
+      const dates = await mapWithConcurrency(closedRows, 6, r => findActualTransitionDate(r.id, r.state));
+      closedRows.forEach((r, i) => { r.closedDate = dates[i] || r.changed || null; });
+    }
+    const cutoff = Date.now() - windowDays * 86400000;
+    UL.rows = rows.filter(r => !r.isClosed || (r.closedDate && new Date(r.closedDate).getTime() >= cutoff));
+
+    UL.limit = UL_PAGE;
+    ulBuildFilterOptions();
+    ulRenderAll();
+  } catch (err) {
+    UL.rows = [];
+    let msg;
+    if (err.message === 'CORS_OR_NETWORK') msg = 'Could not reach Azure DevOps for this section.';
+    else if (err.message && err.message.startsWith('HTTP_')) {
+      msg = `<strong>${esc(err.message.replace('HTTP_', 'HTTP '))}</strong>` + (err.wiqlLabel ? ` while running: ${esc(err.wiqlLabel)}.` : '.') +
+        (err.detail ? `<br><strong>Azure DevOps said:</strong> ${esc(err.detail)}` : '') +
+        (/size limit|20000/i.test(err.detail || '') ? '<br>Too many work items matched — lower the "closed in the last (days)" value in Report options and refresh.' : '');
+    } else msg = esc('Something went wrong: ' + err.message);
+    errEl.innerHTML = msg; errEl.style.display = 'block';
+    document.getElementById('meta-unlinked').textContent = 'Could not load this section — the rest of the report is unaffected.';
+    ['unlinked-stats', 'unlinked-filters'].forEach(id => document.getElementById(id).style.display = 'none');
+    document.getElementById('unlinked-breakdowns').innerHTML = '';
+    document.getElementById('rows-unlinked').innerHTML = '';
+    document.getElementById('unlinked-more').textContent = '';
+  }
+}
+
+// ---- filtering / sorting --------------------------------------------
+function ulFilter(skipKey) {
+  const f = UL.f, q = f.q.trim().toLowerCase();
+  return UL.rows.filter(r => {
+    for (const k in UL_DIMS) {
+      if (k === skipKey || !f[k]) continue;
+      if (UL_DIMS[k](r) !== f[k]) return false;
+    }
+    if (q) {
+      const hay = `${r.id} ${r.title} ${r.parentId || ''} ${r.parentTitle || ''} ${r.suggestion ? r.suggestion.id + ' ' + r.suggestion.title : ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function ulSortVal(r, key) {
+  switch (key) {
+    case 'id': return r.id;
+    case 'title': return (r.title || '').toLowerCase();
+    case 'type': return (r.type || '').toLowerCase();
+    case 'state': return (r.state || '').toLowerCase();
+    case 'reason': return r.reason === 'none' ? 0 : r.parentId || 1;
+    case 'assignee': return (r.assignedTo || '~').toLowerCase();
+    case 'area': return (r.areaPath || '').toLowerCase();
+    case 'createdBy': return (r.createdBy || '~').toLowerCase();
+    case 'created': return r.created || '';
+    case 'age': return r.age == null ? -1 : r.age;
+    case 'suggestion': return r.suggestion ? r.suggestion.score : -1;
+    default: return 0;
+  }
+}
+function ulSorted(rows) {
+  const dir = UL.sortDir === 'asc' ? 1 : -1, key = UL.sortKey, g = UL.groupBy;
+  const gl = r => g ? (g === 'suggestion' ? (r.suggestion ? `#${r.suggestion.id} ${r.suggestion.title}` : '(no suggestion)') : UL_DIMS[g](r)) : '';
+  return rows.slice().sort((a, b) => {
+    if (g) { const ga = gl(a).toLowerCase(), gb = gl(b).toLowerCase(); if (ga !== gb) return ga < gb ? -1 : 1; }
+    const va = ulSortVal(a, key), vb = ulSortVal(b, key);
+    if (va < vb) return -1 * dir; if (va > vb) return 1 * dir;
+    return a.id - b.id;
+  });
+}
+function ulGroupLabel(r) {
+  const g = UL.groupBy;
+  if (g === 'suggestion') return r.suggestion ? `#${r.suggestion.id} ${r.suggestion.title}` : '(no suggestion)';
+  return UL_DIMS[g](r);
+}
+
+// ---- rendering ------------------------------------------------------
+function ulBuildFilterOptions() {
+  document.getElementById('unlinked-filters').style.display = 'flex';
+  ['status', 'reason', 'type', 'area', 'assignee', 'createdBy', 'suggestion'].forEach(dim => {
+    const el = document.getElementById('ul-' + dim);
+    const vals = UL_FIXED_OPTS[dim] || [...new Set(UL.rows.map(UL_DIMS[dim]))].sort((a, b) => a.localeCompare(b));
+    const cur = UL.f[dim];
+    el.innerHTML = `<option value="">${UL_ALL_LABEL[dim]}</option>` + vals.map(v => `<option value="${esc(v)}">${esc(dim === 'area' ? ulShortArea(v) : v)}</option>`).join('');
+    if (cur && vals.includes(cur)) el.value = cur; else { UL.f[dim] = ''; el.value = ''; }
+  });
+}
+function ulRenderAll() {
+  ulRenderStats();
+  ulRenderBreakdowns();
+  ulRenderTable();
+}
+function ulRenderStats() {
+  const rows = UL.rows;
+  const noParent = rows.filter(r => r.reason === 'none').length;
+  const open = rows.filter(r => !r.isClosed).length;
+  const ages = rows.map(r => r.age).filter(a => a != null);
+  const el = document.getElementById('unlinked-stats');
+  el.style.display = 'grid';
+  el.innerHTML = `
+    <div class="stat"><div class="num">${rows.length}</div><div class="label">Outside a Master Tracker</div></div>
+    <div class="stat"><div class="num">${noParent}</div><div class="label">No parent at all</div></div>
+    <div class="stat"><div class="num">${rows.length - noParent}</div><div class="label">Non-MT parent</div></div>
+    <div class="stat"><div class="num">${open}</div><div class="label">Open</div></div>
+    <div class="stat"><div class="num">${rows.length - open}</div><div class="label">Closed (last ${UL.windowDays}d)</div></div>
+    <div class="stat"><div class="num">${rows.filter(r => r.suggestion).length}</div><div class="label">With a suggestion</div></div>
+    <div class="stat"><div class="num">${ages.length ? Math.max(...ages) : 0}</div><div class="label">Oldest (days)</div></div>`;
+  document.getElementById('meta-unlinked').textContent =
+    `${rows.length} work item(s) — open, plus closed in the last ${UL.windowDays} days — whose direct parent is not a Master Tracker (no parent, or a parent of another type). ` +
+    `Window is set under Report options.`;
+}
+function ulRenderBreakdowns() {
+  const cards = [['type', 'By type'], ['area', 'By area path'], ['assignee', 'By assignee'], ['createdBy', 'By creator']];
+  const TOP = 8;
+  document.getElementById('unlinked-breakdowns').innerHTML = cards.map(([dim, title]) => {
+    const counts = {};
+    ulFilter(dim).forEach(r => { const k = UL_DIMS[dim](r); counts[k] = (counts[k] || 0) + 1; });
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    // keep the active selection visible even if it's outside the top slice
+    let shown = entries.slice(0, TOP);
+    const active = UL.f[dim];
+    if (active && !shown.some(e => e[0] === active)) { const e = entries.find(x => x[0] === active); if (e) shown.push(e); }
+    const max = Math.max(1, ...shown.map(e => e[1]));
+    const body = shown.length ? shown.map(([k, n]) => `
+      <div class="ul-bd-row${active === k ? ' active' : ''}" data-dim="${dim}" data-val="${esc(k)}" title="Click to filter">
+        <div><div class="ul-bd-label">${esc(dim === 'area' ? ulShortArea(k) : k)}</div><div class="ul-bd-bar"><span style="width:${Math.round(100 * n / max)}%"></span></div></div>
+        <div class="ul-bd-count">${n}</div>
+      </div>`).join('') : '<div class="ul-bd-more">Nothing</div>';
+    const more = entries.length > shown.length ? `<div class="ul-bd-more">+ ${entries.length - shown.length} more</div>` : '';
+    return `<div class="ul-bd"><h3>${title}</h3>${body}${more}</div>`;
+  }).join('');
+}
+function ulRowHtml(r) {
+  const stateCell = `<span class="badge${r.isClosed ? ' badge-good' : ''}">${esc(r.state)}</span>` +
+    (r.isClosed && r.closedDate ? `<div class="ul-sub">${esc(String(r.closedDate).slice(0, 10))}</div>` : '');
+  const parentCell = r.reason === 'none'
+    ? '<span class="badge badge-bad">No parent</span>'
+    : `<span class="badge badge-warn">Non-MT parent</span>
+       <div class="ul-sub">${wiLinkHtml(r.parentId)} <span class="badge">${esc(r.parentType || '?')}</span> ${esc(r.parentTitle)}</div>`;
+  let sugCell = '<span style="color:var(--muted)">—</span>';
+  if (r.suggestion) {
+    const s = r.suggestion;
+    const basis = s.basis === 'chain'
+      ? `<span class="badge badge-good" title="This item's parent sits under this Master Tracker">Via parent chain</span>`
+      : `<span class="badge ${s.score >= 0.6 ? 'badge-good' : 'badge-warn'}" title="Shared words: ${esc((s.shared || []).join(', '))}">Title match ${Math.round(s.score * 100)}%</span>`;
+    sugCell = `${wiLinkHtml(s.id, true)} ${esc(s.title)}<div class="ul-sub">${basis} <span class="badge">${esc(s.state)}</span></div>`;
+  }
+  return `<tr>
+    <td>${wiLinkHtml(r.id, true)}</td>
+    <td class="ul-title">${esc(r.title)}</td>
+    <td><span class="badge">${esc(r.type)}</span></td>
+    <td>${stateCell}</td>
+    <td>${parentCell}</td>
+    <td>${esc(r.assignedTo) || '<span style="color:var(--muted)">Unassigned</span>'}</td>
+    <td title="${esc(r.areaPath)}">${esc(ulShortArea(r.areaPath))}</td>
+    <td>${esc(r.createdBy) || '—'}</td>
+    <td style="white-space:nowrap">${esc((r.created || '').slice(0, 10))}</td>
+    <td class="${ageClass(r.age)}">${r.age == null ? '' : r.age}</td>
+    <td>${sugCell}</td>
+  </tr>`;
+}
+function ulRenderTable() {
+  const filtered = ulSorted(ulFilter(null));
+  const shown = filtered.slice(0, UL.limit);
+  let html = '', last = null;
+  shown.forEach(r => {
+    if (UL.groupBy) {
+      const g = ulGroupLabel(r);
+      if (g !== last) {
+        const n = filtered.filter(x => ulGroupLabel(x) === g).length;
+        html += `<tr class="ul-group"><td colspan="11">${esc(UL.groupBy === 'area' ? ulShortArea(g) : g)} — ${n} item(s)</td></tr>`;
+        last = g;
+      }
+    }
+    html += ulRowHtml(r);
+  });
+  document.getElementById('rows-unlinked').innerHTML = html ||
+    `<tr><td colspan="11" class="empty">${UL.rows.length ? 'No work items match these filters' : 'Every work item in scope has a Master Tracker as its parent'}</td></tr>`;
+
+  document.querySelectorAll('#unlinked-table th.sortable').forEach(th => {
+    const on = th.dataset.sort === UL.sortKey;
+    th.classList.toggle('sorted', on);
+    th.classList.toggle('desc', on && UL.sortDir === 'desc');
+  });
+
+  const more = document.getElementById('unlinked-more');
+  const total = UL.rows.length;
+  more.innerHTML = filtered.length > shown.length
+    ? `Showing ${shown.length} of ${filtered.length}${filtered.length !== total ? ` (filtered from ${total})` : ''}
+       <button type="button" class="small" onclick="ulShowMore(${UL_PAGE})">Show ${Math.min(UL_PAGE, filtered.length - shown.length)} more</button>
+       <button type="button" class="small" onclick="ulShowMore(1e9)">Show all</button>`
+    : (total ? `Showing ${filtered.length} of ${total}` : '');
+}
+
+// ---- controls -------------------------------------------------------
+function ulReadControls() {
+  UL.f.q = document.getElementById('ul-q').value;
+  ['status', 'reason', 'type', 'area', 'assignee', 'createdBy', 'suggestion'].forEach(d => { UL.f[d] = document.getElementById('ul-' + d).value; });
+  UL.groupBy = document.getElementById('ul-group').value;
+}
+function ulOnFilter() { ulReadControls(); UL.limit = UL_PAGE; ulRenderBreakdowns(); ulRenderTable(); }
+let _ulDebounce = null;
+function ulOnFilterDebounced() { clearTimeout(_ulDebounce); _ulDebounce = setTimeout(ulOnFilter, 200); }
+function ulClearFilters() {
+  document.getElementById('ul-q').value = '';
+  ['status', 'reason', 'type', 'area', 'assignee', 'createdBy', 'suggestion', 'group'].forEach(d => { document.getElementById('ul-' + d).value = ''; });
+  ulOnFilter();
+}
+function ulShowMore(n) { UL.limit += n; ulRenderTable(); }
+
+document.getElementById('sec-unlinked').addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if (th) {
+    const k = th.dataset.sort;
+    if (UL.sortKey === k) UL.sortDir = UL.sortDir === 'asc' ? 'desc' : 'asc';
+    else { UL.sortKey = k; UL.sortDir = (k === 'age' || k === 'suggestion') ? 'desc' : 'asc'; }
+    ulRenderTable();
+    return;
+  }
+  const row = e.target.closest('.ul-bd-row');
+  if (row) {
+    const dim = row.dataset.dim, val = row.dataset.val;
+    const sel = document.getElementById('ul-' + dim);
+    sel.value = (UL.f[dim] === val) ? '' : val; // click again to clear
+    ulOnFilter();
+  }
+});
+
+// ---- copy / export (respect current filters + sort) ------------------
+function ulCurrentRows() { return ulSorted(ulFilter(null)); }
+async function ulCopyList() {
+  const rows = ulCurrentRows();
+  const st = document.getElementById('ul-copy-status');
+  if (!rows.length) { st.textContent = 'Nothing to copy.'; return; }
+  const lines = rows.map(r => {
+    const parent = r.reason === 'none' ? 'no parent' : `parent #${r.parentId} (${r.parentType})`;
+    const sug = r.suggestion ? ` — suggest MT #${r.suggestion.id}${r.suggestion.basis === 'chain' ? ' (via parent chain)' : ` (title match ${Math.round(r.suggestion.score * 100)}%)`}` : '';
+    return `#${r.id}  ${r.title}  — ${r.type}, ${r.state}, ${parent}, ${r.assignedTo || 'unassigned'}, ${r.age == null ? '?' : r.age}d old${sug}`;
+  });
+  const text = `WORK ITEMS OUTSIDE A MASTER TRACKER — ${new Date().toISOString().slice(0, 10)} — ${rows.length} item(s)\n\n${lines.join('\n')}`;
+  try { await navigator.clipboard.writeText(text); st.textContent = `Copied ${rows.length} item(s) to clipboard.`; }
+  catch (e) { st.textContent = 'Clipboard blocked by the browser.'; }
+}
+function ulExportCsv() {
+  const rows = ulCurrentRows();
+  const st = document.getElementById('ul-copy-status');
+  if (!rows.length) { st.textContent = 'Nothing to export.'; return; }
+  // RFC4180: comma-delimited, every field quoted, CRLF line ends. (Not the
+  // en-ZA semicolon default — see learnings on ADO's importer.)
+  const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const header = ['ID', 'Title', 'Work Item Type', 'State', 'Closed Date', 'Parent Status', 'Parent ID', 'Parent Type', 'Parent Title',
+    'Assigned To', 'Area Path', 'Created By', 'Created Date', 'Age (days)', 'Suggested Master Tracker ID', 'Suggested Master Tracker Title', 'Suggestion Basis', 'Suggestion Score'];
+  const lines = [header.map(cell).join(',')];
+  rows.forEach(r => {
+    const s = r.suggestion;
+    lines.push([r.id, r.title, r.type, r.state, r.closedDate ? String(r.closedDate).slice(0, 10) : '',
+      r.reason === 'none' ? 'No parent' : 'Non-MT parent', r.parentId, r.parentType, r.parentTitle,
+      r.assignedTo, r.areaPath, r.createdBy, (r.created || '').slice(0, 10), r.age,
+      s ? s.id : '', s ? s.title : '', s ? (s.basis === 'chain' ? 'Parent chain' : 'Title match') : '', s ? Math.round(s.score * 100) / 100 : ''].map(cell).join(','));
+  });
+  const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `work-items-outside-master-tracker-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  st.textContent = `Exported ${rows.length} item(s).`;
 }
 
 restoreConfig();
