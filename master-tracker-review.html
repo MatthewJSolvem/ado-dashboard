@@ -320,20 +320,57 @@ async function findActualTransitionDate(id, targetState) {
   } catch (e) { return null; }
 }
 
+// Every identifier we can find for a person (ADO id, sign-in/email, display
+// name), lower-cased. Revision history hands us identities in different
+// shapes — {id, uniqueName, displayName} objects, or "Name <email>" strings —
+// and the work item's own field gives only a display name. Two people are the
+// same if ANY identifier overlaps, so one side being an email and the other a
+// display name no longer produces a false mismatch.
+function identityKeys(v) {
+  const keys = new Set();
+  const add = x => { const k = String(x == null ? '' : x).trim().toLowerCase(); if (k) keys.add(k); };
+  if (!v) return [];
+  if (typeof v === 'object') { add(v.id); add(v.uniqueName); add(v.displayName); }
+  else {
+    const str = String(v);
+    add(str);
+    const m = str.match(/^(.*?)\s*<(.*)>\s*$/);
+    if (m) { add(m[1]); add(m[2]); }
+  }
+  return [...keys];
+}
+function identityName(v) {
+  if (!v) return null;
+  if (typeof v === 'object') return v.displayName || v.uniqueName || null;
+  const m = String(v).match(/^(.*?)\s*<.*>\s*$/);
+  return (m ? m[1].trim() : String(v)).trim() || null;
+}
+function sameIdentity(aKeys, bKeys) {
+  const set = new Set(aKeys);
+  return bKeys.some(k => set.has(k));
+}
+
 // For a work item that's currently Done: finds who actually moved it to Done
 // (from its revision history, not just who last touched it) and who it was
-// assigned to at that moment.
+// assigned to at that moment — i.e. the most recent Assigned To value on or
+// before the Done revision, NOT whoever holds the item now.
 async function analyzeCompletion(child) {
   const updates = await getWorkItemUpdates(child.id);
-  const toDoneUpdates = (updates.value || []).filter(u =>
-    u.fields && u.fields['System.State'] && u.fields['System.State'].newValue === 'Done');
-  const lastTransition = toDoneUpdates[toDoneUpdates.length - 1];
-  if (!lastTransition) return null; // e.g. created directly in Done — nothing to compare
+  const all = updates.value || [];
+  let lastIdx = -1;
+  all.forEach((u, i) => {
+    if (u.fields && u.fields['System.State'] && u.fields['System.State'].newValue === 'Done') lastIdx = i;
+  });
+  if (lastIdx < 0) return null; // e.g. created directly in Done — nothing to compare
+  const lastTransition = all[lastIdx];
 
   const completedBy = lastTransition.revisedBy || {};
-  const assignedAtTransition = lastTransition.fields['System.AssignedTo']
-    ? lastTransition.fields['System.AssignedTo'].newValue
-    : field(child, 'System.AssignedTo', null);
+  let assignedAtTransition = null, sawAssignee = false;
+  for (let i = 0; i <= lastIdx; i++) {
+    const f = all[i].fields && all[i].fields['System.AssignedTo'];
+    if (f) { assignedAtTransition = f.newValue || null; sawAssignee = true; }
+  }
+  if (!sawAssignee) assignedAtTransition = field(child, 'System.AssignedTo', null); // never recorded; best available
 
   let comments = { count: 0 };
   try {
@@ -346,11 +383,9 @@ async function analyzeCompletion(child) {
     title: field(child, 'System.Title'),
     type: field(child, 'System.WorkItemType'),
     completedByName: completedBy.displayName || completedBy.uniqueName || 'Unknown',
-    completedByKey: (completedBy.uniqueName || completedBy.displayName || '').toLowerCase(),
-    assignedToName: assignedAtTransition ? (typeof assignedAtTransition === 'object'
-      ? (assignedAtTransition.displayName || assignedAtTransition.uniqueName) : String(assignedAtTransition)) : null,
-    assignedToKey: assignedAtTransition ? (typeof assignedAtTransition === 'object'
-      ? (assignedAtTransition.uniqueName || assignedAtTransition.displayName || '') : String(assignedAtTransition)).toLowerCase() : null,
+    completedByKeys: identityKeys(completedBy),
+    assignedToName: identityName(assignedAtTransition),
+    assignedToKeys: identityKeys(assignedAtTransition),
     date: lastTransition.fields['System.ChangedDate'] ? lastTransition.fields['System.ChangedDate'].newValue : field(child, 'System.ChangedDate'),
     descriptionEmpty: !stripHtml(field(child, 'System.Description')),
     commentCount: comments.count,
@@ -673,8 +708,9 @@ async function loadReview() {
     setStatus('Checking completions for anomalies...');
     const doneChildren = children.filter(c => field(c, 'System.State').toLowerCase() === 'done');
     const analyses = (await mapWithConcurrency(doneChildren, 6, analyzeCompletion)).filter(Boolean);
+    // Only flag when both sides are known AND share no identifier (id / email / name).
     const completedByOther = analyses.filter(a =>
-      a.assignedToKey && a.completedByKey && a.assignedToKey !== a.completedByKey);
+      a.assignedToKeys.length && a.completedByKeys.length && !sameIdentity(a.assignedToKeys, a.completedByKeys));
     const undocumented = analyses.filter(a => a.descriptionEmpty && a.commentCount === 0);
 
     setStatus('Checking for work item type changes...');
@@ -946,6 +982,10 @@ const UL = {
   f: { q: '', type: '', status: '', reason: '', area: '', assignee: '', createdBy: '', suggestion: '' },
 };
 const UL_PAGE = 200;
+// Only items created on/after this date are considered (Matthew's request).
+// Applied in the WIQL itself, to open AND recently-closed items alike.
+const UL_CREATED_SINCE = '2026-09-01';
+const UL_CREATED_SINCE_LABEL = '1 September 2026';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1088,6 +1128,7 @@ async function loadUnlinked(ctx) {
     const flat = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
               WHERE [System.TeamProject] = ${wiqlQuote(project)}
               AND [System.WorkItemType] <> 'Master Tracker'
+              AND [System.CreatedDate] >= '${UL_CREATED_SINCE}'
               AND ${stateClause('')}`, 'Work items in scope (open + recently closed)');
     const candidateIds = (flat.workItems || []).map(w => w.id);
 
@@ -1095,6 +1136,7 @@ async function loadUnlinked(ctx) {
     const links = await wiql(projectBase, `SELECT [System.Id] FROM WorkItemLinks
               WHERE [Target].[System.TeamProject] = ${wiqlQuote(project)}
               AND [Target].[System.WorkItemType] <> 'Master Tracker'
+              AND [Target].[System.CreatedDate] >= '${UL_CREATED_SINCE}'
               AND ${stateClause('[Target].')}
               AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'
               MODE (MustContain)`, 'Parent links for work items in scope');
@@ -1272,8 +1314,8 @@ function ulRenderStats() {
     <div class="stat"><div class="num">${rows.filter(r => r.suggestion).length}</div><div class="label">With a suggestion</div></div>
     <div class="stat"><div class="num">${ages.length ? Math.max(...ages) : 0}</div><div class="label">Oldest (days)</div></div>`;
   document.getElementById('meta-unlinked').textContent =
-    `${rows.length} work item(s) — open, plus closed in the last ${UL.windowDays} days — whose direct parent is not a Master Tracker (no parent, or a parent of another type). ` +
-    `Window is set under Report options.`;
+    `${rows.length} work item(s) created on or after ${UL_CREATED_SINCE_LABEL} — open, plus closed in the last ${UL.windowDays} days — whose direct parent is not a Master Tracker (no parent, or a parent of another type). ` +
+    `The closed-item window is set under Report options.`;
 }
 function ulRenderBreakdowns() {
   const cards = [['type', 'By type'], ['area', 'By area path'], ['assignee', 'By assignee'], ['createdBy', 'By creator']];
@@ -1341,7 +1383,7 @@ function ulRenderTable() {
     html += ulRowHtml(r);
   });
   document.getElementById('rows-unlinked').innerHTML = html ||
-    `<tr><td colspan="11" class="empty">${UL.rows.length ? 'No work items match these filters' : 'Every work item in scope has a Master Tracker as its parent'}</td></tr>`;
+    `<tr><td colspan="11" class="empty">${UL.rows.length ? 'No work items match these filters' : `Every work item created since ${UL_CREATED_SINCE_LABEL} has a Master Tracker as its parent`}</td></tr>`;
 
   document.querySelectorAll('#unlinked-table th.sortable').forEach(th => {
     const on = th.dataset.sort === UL.sortKey;
