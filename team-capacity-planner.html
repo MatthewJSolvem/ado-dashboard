@@ -10,68 +10,68 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
-    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
-    --good: #2e7d32; --good-bg: #e8f5e9;
-    --warn: #b45309; --warn-bg: #fff3e0;
-    --bad: #c62828; --bad-bg: #fdecea;
+    --bg: #0a0c13; --card: #141825; --border: #262b3d; --text: #e7e9f2;
+    --muted: #8b93ad; --accent: #6a5ff0; --accent-dark: #564bd6; --accent-2: #8f7bf7;
+    --good: #43d9a3; --good-bg: rgba(67,217,163,0.12);
+    --warn: #f0b450; --warn-bg: rgba(240,180,80,0.12);
+    --bad: #f0606e; --bad-bg: rgba(240,96,110,0.12);
   }
   * { box-sizing: border-box; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
-         margin: 0; padding: 32px; }
-  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
-  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
-  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            padding: 20px; margin-bottom: 24px; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+         margin: 0; padding: 28px; }
+  h1 { font-size: 23px; margin-bottom: 4px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
+  .subtitle { color: var(--muted); margin-bottom: 22px; font-size: 13.5px; max-width: 880px; line-height: 1.5; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6);
+            padding: 18px 20px; margin-bottom: 22px; }
   .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
   .field { display: flex; flex-direction: column; gap: 4px; }
-  label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-  input, select, textarea { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+  label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  input, select, textarea { background: #0e111a; border: 1px solid var(--border); border-radius: 6px;
          color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
-  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
-  .actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
-  button { background: var(--accent); color: white; border: none; border-radius: 2px;
-           padding: 10px 18px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
-           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-  button:hover { background: var(--accent-dark); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  button { background: linear-gradient(145deg,var(--accent-2),var(--accent)); color: white; border: none; border-radius: 7px;
+           padding: 10px 18px; font-size: 13px; font-weight: 700; letter-spacing: 0.2px;
+           cursor: pointer; box-shadow: 0 4px 14px -6px rgba(106,95,240,0.7); }
+  button:hover { filter: brightness(1.08); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.small { padding: 7px 10px; font-size: 12px; text-transform: none; }
+  button.small { padding: 7px 10px; font-size: 12px; background: none; border: 1px solid var(--border); color: var(--muted); box-shadow: none; }
   #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
-  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffb3ba; border-radius: 8px;
            padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
   details.config-details { margin-top: 14px; }
-  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent); font-weight: 600; }
+  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent-2); font-weight: 700; }
   details.config-details .config-grid { margin-top: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
-  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
-          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+          border-radius: 10px; padding: 14px 16px; }
   .stat.stat-bad { border-left-color: var(--bad); }
   .stat.stat-warn { border-left-color: var(--warn); }
-  .stat .num { font-size: 28px; font-weight: 700; }
-  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
-  .banner { border-radius: 2px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
-  .banner-critical { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; }
-  .banner-critical h3 { margin: 0 0 8px 0; font-size: 14px; }
+  .stat .num { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+  .stat .label { color: var(--muted); font-size: 10.5px; margin-top: 4px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.4px; }
+  .banner { border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+  .banner-critical { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffd4d8; }
+  .banner-critical h3 { margin: 0 0 8px 0; font-size: 14px; color: #fff; }
   .banner-critical ul { margin: 0; padding-left: 20px; }
-  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  section { background: linear-gradient(180deg,#161a28,#121521); border: 1px solid var(--border); border-radius: 14px;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px -16px rgba(0,0,0,0.6);
             padding: 20px; margin-bottom: 20px; }
-  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
-  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  section h2 { font-size: 14px; margin: 0 0 4px 0; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 0.4px; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
-       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
-  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { text-align: left; color: #74799a; font-weight: 700; font-size: 10.5px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid #1e2230; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #f5f7fa; }
-  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
-           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  tr:hover td { background: #191d2c; }
+  .badge { background: #1e2230; color: var(--accent-2); padding: 2px 8px; border-radius: 10px;
+           font-size: 10.5px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
   .badge-bad { background: var(--bad-bg); color: var(--bad); }
   .badge-good { background: var(--good-bg); color: var(--good); }
   .badge-warn { background: var(--warn-bg); color: var(--warn); }
-  .badge-muted { background: #eceff1; color: var(--muted); }
+  .badge-muted { background: #1e2230; color: var(--muted); }
   .empty { color: var(--muted); text-align: center; padding: 20px !important; }
   .age-green { color: var(--good); font-weight: 700; }
   .age-amber { color: var(--warn); font-weight: 700; }
@@ -79,31 +79,40 @@
   .week-group { margin-bottom: 18px; }
   .week-group:last-child { margin-bottom: 0; }
   .week-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-  .week-head h3 { font-size: 13px; margin: 0; font-weight: 700; }
+  .week-head h3 { font-size: 13px; margin: 0; font-weight: 700; color: #fff; }
   .week-head .cap-note { font-size: 12px; color: var(--muted); }
-  .person-card { border: 1px solid var(--border); border-radius: 2px; padding: 14px; margin-bottom: 12px; }
+  .person-card { background: #121521; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
   .person-card:last-child { margin-bottom: 0; }
   .person-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-  .person-name { font-weight: 700; font-size: 14px; }
+  .person-name { font-weight: 700; font-size: 14px; color: #fff; }
   .person-meta { font-size: 12px; color: var(--muted); }
-  .wip-bar-track { background: #eceff1; border-radius: 3px; height: 8px; width: 100%; overflow: hidden; margin-top: 6px; }
+  .wip-bar-track { background: #1e2230; border-radius: 3px; height: 8px; width: 100%; overflow: hidden; margin-top: 6px; }
   .wip-bar-fill { height: 100%; background: var(--accent); }
   .wip-bar-fill.over { background: var(--bad); }
   .complexity-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
   .jump-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 20px; }
-  .jump-nav a { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
-    color: var(--accent); background: #fff; border: 1px solid var(--border); border-radius: 2px;
+  .jump-nav a { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--accent-2); background: var(--card); border: 1px solid var(--border); border-radius: 7px;
     padding: 6px 10px; text-decoration: none; }
-  .jump-nav a:hover { background: #e8eaf6; }
-  .scrum-pulse { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-bottom: 18px;
-    background: #eef0fb; border-radius: 2px; padding: 14px 16px; }
-  .scrum-pulse .pulse-item { font-size: 13px; }
-  .scrum-pulse .pulse-item .big { font-size: 20px; font-weight: 700; display: block; }
-  .scrum-focus-list { list-style: none; margin: 0; padding: 0; }
-  .scrum-focus-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-  .scrum-focus-list li:last-child { border-bottom: none; }
+  .jump-nav a:hover { background: #1e2230; }
+
+  /* ---- shared KPI tiles (scrum pulse, overview, move suggestions) ---- */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--kpi-accent, var(--accent));
+    border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+  .kpi-tile .kpi-label { color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .kpi-tile .kpi-value { color: #fff; font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .kpi-tile .kpi-sub { color: #6b7490; font-size: 11px; margin-top: 5px; }
+  .kpi-tile .kpi-icon { position: absolute; right: 12px; top: 12px; font-size: 18px; opacity: 0.35; }
+
+  .focus-list { list-style: none; margin: 0; padding: 0; }
+  .focus-list li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid #1e2230; font-size: 13px; }
+  .focus-list li:last-child { border-bottom: none; }
+  .focus-list .fl-id { font-weight: 700; color: var(--accent-2); text-decoration: none; min-width: 42px; }
+  .focus-list.blockers .fl-id { color: var(--bad); }
+  .focus-list .fl-title { flex: 1; }
   .scrum-blockers { font-size: 13px; }
-  .scrum-blockers li { margin-bottom: 4px; }
+
   details.collapsible-section > summary { cursor: pointer; list-style: none; }
   details.collapsible-section > summary::-webkit-details-marker { display: none; }
   details.collapsible-section > summary h2 { display: inline; }
@@ -113,89 +122,30 @@
   label.inline-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
     text-transform: none; font-weight: 600; cursor: pointer; }
 
-  .top-tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--border); }
-  .top-tabs button { background: none; border: none; box-shadow: none; color: var(--muted); font-weight: 700;
-    font-size: 13px; text-transform: none; letter-spacing: 0; padding: 10px 18px; cursor: pointer;
-    border-bottom: 3px solid transparent; margin-bottom: -2px; border-radius: 0; }
-  .top-tabs button:hover { color: var(--text); background: none; }
-  .top-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  /* ---- avatars + color-tiered chips (shared with move suggestions) ---- */
+  .avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none;
+    border-radius: 50%; color: #fff; font-size: 10.5px; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.15); }
+  .metric-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .metric-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .metric-chip.tier-good { background: var(--good-bg); color: var(--good); }
+  .metric-chip.tier-good .chip-dot { background: var(--good); }
+  .metric-chip.tier-warn { background: var(--warn-bg); color: var(--warn); }
+  .metric-chip.tier-warn .chip-dot { background: var(--warn); }
+  .metric-chip.tier-bad { background: var(--bad-bg); color: var(--bad); }
+  .metric-chip.tier-bad .chip-dot { background: var(--bad); }
+  .metric-chip.tier-na { background: rgba(139,147,173,0.1); color: var(--muted); }
+  .metric-chip.tier-na .chip-dot { background: var(--muted); }
 
-  /* ---- Team Performance tab: dark, chart-forward, scoped to this tab only ---- */
-  #tab-performance { background: #0c0e16; color: #e4e7f0; border-radius: 10px; padding: 24px; margin: -4px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  #tab-performance .perf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 8px; }
-  #tab-performance h2 { color: #fff; font-size: 18px; margin: 0; letter-spacing: 0.2px; }
-  #tab-performance .perf-asof { color: #6b7490; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-  #tab-performance .perf-meta { color: #8b93ad; font-size: 13px; margin-bottom: 20px; max-width: 760px; line-height: 1.5; }
-  #tab-performance .perf-card { background: linear-gradient(180deg,#161a28,#131620); border: 1px solid #262b3d; border-radius: 12px;
-    padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.5); }
-  #tab-performance .perf-card-title { color: #fff; font-size: 13px; font-weight: 700; margin: 0 0 14px 0; display: flex; align-items: center; gap: 7px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
-  #tab-performance .perf-card-title .dot { width: 7px; height: 7px; border-radius: 50%; background: #6a5ff0; box-shadow: 0 0 8px #6a5ff0; }
-  #tab-performance .perf-chart-wrap { height: 300px; }
-  #tab-performance .perf-chart-wrap.small { height: 230px; }
-
-  /* KPI strip */
-  .perf-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
-  .perf-kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid #262b3d; border-left: 3px solid var(--kpi-accent, #6a5ff0);
-    border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
-  .perf-kpi-tile .kpi-label { color: #8b93ad; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
-  .perf-kpi-tile .kpi-value { color: #fff; font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
-  .perf-kpi-tile .kpi-sub { color: #6b7490; font-size: 11px; margin-top: 5px; }
-  .perf-kpi-tile .kpi-icon { position: absolute; right: 12px; top: 12px; font-size: 20px; opacity: 0.35; }
-
-  /* Two-column chart row */
-  .perf-chart-row { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
-  @media (max-width: 900px) { .perf-chart-row { grid-template-columns: 1fr; } }
-
-  /* Ranking table */
-  .perf-rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .perf-rank-table th { text-align: left; color: #74799a; font-weight: 700; font-size: 10.5px; text-transform: uppercase;
-    letter-spacing: 0.4px; padding: 0 10px 10px; border-bottom: 1px solid #262b3d; white-space: nowrap; }
-  .perf-rank-table td { padding: 11px 10px; border-bottom: 1px solid #1e2230; vertical-align: middle; }
-  .perf-rank-table tr:last-child td { border-bottom: none; }
-  .perf-rank-table tr:hover td { background: #191d2c; }
-  .perf-rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
-    border-radius: 50%; background: #262b3d; color: #e4e7f0; font-weight: 800; font-size: 12px; flex: none; }
-  .perf-rank-badge.gold { background: linear-gradient(145deg,#f0d060,#caa23a); color: #1a1e2c; box-shadow: 0 0 10px rgba(202,162,58,0.5); }
-  .perf-rank-badge.silver { background: linear-gradient(145deg,#d6dbea,#a3abc2); color: #1a1e2c; box-shadow: 0 0 10px rgba(163,171,194,0.35); }
-  .perf-rank-badge.bronze { background: linear-gradient(145deg,#d3925a,#b5743a); color: #1a1e2c; box-shadow: 0 0 10px rgba(181,116,58,0.35); }
-  .perf-name-cell { display: flex; align-items: center; gap: 10px; }
-  .perf-avatar { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none;
-    border-radius: 50%; color: #fff; font-size: 11.5px; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.15); }
-  .perf-composite-cell { display: flex; align-items: center; gap: 10px; min-width: 130px; }
-  .perf-composite-num { font-size: 16px; font-weight: 800; min-width: 30px; }
-  .perf-score-bar-track { background: #1e2230; border-radius: 3px; height: 7px; width: 70px; overflow: hidden; flex: none; }
-  .perf-score-bar-fill { height: 100%; border-radius: 3px; }
-
-  /* Per-metric chips (color tiered: good/warn/bad) + mini bars used in dev cards */
-  .perf-metric-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .perf-metric-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; }
-  .perf-metric-chip.tier-good { background: rgba(67,217,163,0.12); color: #43d9a3; }
-  .perf-metric-chip.tier-good .chip-dot { background: #43d9a3; }
-  .perf-metric-chip.tier-warn { background: rgba(240,180,80,0.12); color: #f0b450; }
-  .perf-metric-chip.tier-warn .chip-dot { background: #f0b450; }
-  .perf-metric-chip.tier-bad { background: rgba(240,96,110,0.12); color: #f0606e; }
-  .perf-metric-chip.tier-bad .chip-dot { background: #f0606e; }
-  .perf-metric-chip.tier-na { background: rgba(139,147,173,0.1); color: #74799a; }
-  .perf-metric-chip.tier-na .chip-dot { background: #74799a; }
-
-  /* Developer breakdown cards */
-  .perf-dev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-  .perf-dev-card { background: linear-gradient(180deg,#161a28,#131620); border: 1px solid #262b3d; border-radius: 12px; padding: 16px; }
-  .perf-dev-card .pdc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-  .perf-dev-card .pdc-head .perf-avatar { width: 38px; height: 38px; font-size: 14px; }
-  .perf-dev-card .pdc-name { font-weight: 700; color: #fff; font-size: 14px; }
-  .perf-dev-card .pdc-rank { color: #74799a; font-size: 11px; }
-  .perf-dev-card .pdc-score { margin-left: auto; text-align: right; }
-  .perf-dev-card .pdc-score .num { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
-  .perf-dev-card .pdc-score .lbl { color: #6b7490; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
-  .pdc-metric-row { display: grid; grid-template-columns: 76px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 11.5px; }
-  .pdc-metric-row .m-label { color: #8b93ad; font-weight: 600; }
-  .pdc-metric-row .m-val { color: #cfd3e4; font-weight: 700; text-align: right; }
-  .pdc-mini-track { background: #1e2230; border-radius: 3px; height: 6px; overflow: hidden; }
-  .pdc-mini-fill { height: 100%; border-radius: 3px; }
-  .perf-dev-card .pdc-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid #1e2230; color: #6b7490; font-size: 11px; display: flex; justify-content: space-between; }
+  /* ---- sprint rebalancing suggestions ---- */
+  .move-list { list-style: none; margin: 0; padding: 0; }
+  .move-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 2px; border-bottom: 1px solid #1e2230; font-size: 13px; }
+  .move-row:last-child { border-bottom: none; }
+  .move-icon { flex: none; font-size: 16px; margin-top: 1px; }
+  .move-body { flex: 1; line-height: 1.6; }
+  .move-body .fl-id { font-weight: 700; color: var(--accent-2); text-decoration: none; }
+  .move-body .mv-why { color: var(--warn); font-weight: 700; }
+  .move-body .mv-drop { color: var(--muted); display: block; margin-top: 2px; font-size: 12px; }
+  .move-body .mv-drop .fl-id { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -203,12 +153,7 @@
 <div class="app-main">
 
   <h1>Dev Planner</h1>
-  <div class="subtitle">Focused on the development team: weekly capacity vs. real velocity, each developer's week, a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), test rejections, and everything still open in sprints that have already ended.</div>
-
-  <div class="top-tabs">
-    <button id="tabbtn-planner" class="active" onclick="switchTab('planner')" type="button">Planner</button>
-    <button id="tabbtn-performance" onclick="switchTab('performance')" type="button">Team Performance</button>
-  </div>
+  <div class="subtitle">Decide what goes into each sprint: a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), a suggested sprint-week allocation, and a heads-up whenever something's urgency changed enough that it should move sprints. Team-wide performance and reporting now live on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
 
   <div class="config">
     <div style="display:none">
@@ -270,12 +215,10 @@
     </details>
   </div>
 
-  <div id="tab-planner">
-
   <nav class="jump-nav" id="jump-nav" style="display:none">
-    <a href="#sec-scrum">Scrum</a><a href="#sec-open">P1/P2</a><a href="#sec-capacity-card">Capacity</a>
-    <a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a><a href="#sec-carryover">Carry-over</a>
-    <a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
+    <a href="#sec-scrum">Scrum</a><a href="#sec-rebalance">Rebalance</a><a href="#sec-open">P1/P2</a><a href="#sec-weeks">Sprint planner</a>
+    <a href="#sec-capacity-card">Capacity</a><a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a>
+    <a href="#sec-carryover">Carry-over</a><a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
   </nav>
 
   <div id="error"></div>
@@ -289,17 +232,23 @@
   <section id="sec-scrum" style="display:none">
     <h2>Today's scrum</h2>
     <div class="meta">Sprint pulse, what this week is actually about, and anything blocked — the three things a stand-up needs on screen.</div>
-    <div class="scrum-pulse" id="scrum-pulse"></div>
+    <div class="kpi-row" id="scrum-pulse"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div>
-        <h3 style="font-size:13px;margin:0 0 6px 0">This week's focus (top P1/P2, by priority)</h3>
-        <ul class="scrum-focus-list" id="scrum-focus"></ul>
+        <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">This week's focus (top P1/P2, by priority)</h3>
+        <ul class="focus-list" id="scrum-focus"></ul>
       </div>
       <div>
-        <h3 style="font-size:13px;margin:0 0 6px 0">Blocked right now</h3>
-        <ul class="scrum-focus-list scrum-blockers" id="scrum-blockers"></ul>
+        <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">Blocked right now</h3>
+        <ul class="focus-list blockers" id="scrum-blockers"></ul>
       </div>
     </div>
+  </section>
+
+  <section id="sec-rebalance" style="display:none">
+    <h2>Sprint rebalancing suggestions</h2>
+    <div class="meta">Items whose priority/severity now makes them urgent but aren't in the current sprint yet — with who to consider dropping from that person's current-sprint load to make room. A heads-up, not an automatic change.</div>
+    <ul class="move-list" id="move-list"></ul>
   </section>
 
   <section id="sec-open" style="display:none">
@@ -330,23 +279,23 @@
     </details>
   </section>
 
-  <section id="sec-capacity-card" style="display:none">
-    <h2>Weekly capacity — worked example</h2>
-    <div class="meta" id="meta-capacity-card"></div>
-    <div class="table-wrap"><table><tbody id="rows-capacity-card"></tbody></table></div>
-  </section>
-
   <div id="overview-stats" class="grid" style="display:none"></div>
 
-  <section id="sec-devperf" style="display:none">
-    <h2>Developer weekly performance &amp; workload</h2>
-    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours).</div>
+  <details class="collapsible-section" id="sec-capacity-card" style="display:none">
+    <summary><h2>Weekly capacity — worked example</h2></summary>
+    <div class="meta" id="meta-capacity-card"></div>
+    <div class="table-wrap"><table><tbody id="rows-capacity-card"></tbody></table></div>
+  </details>
+
+  <details class="collapsible-section" id="sec-devperf" style="display:none">
+    <summary><h2>Developer weekly performance &amp; workload</h2></summary>
+    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours). The full version of this, with charts, lives on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
     <div class="table-wrap"><table><thead><tr>
       <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
       <th>Assigned effort (h)</th><th>vs. capacity</th><th>Filling their time?</th>
     </tr></thead>
     <tbody id="rows-devperf"></tbody></table></div>
-  </section>
+  </details>
 
   <details class="collapsible-section" id="sec-wip" style="display:none">
     <summary><h2>WIP per person<span class="section-count" id="count-wip"></span></h2></summary>
@@ -364,8 +313,8 @@
     <tbody id="rows-pool"></tbody></table></div>
   </details>
 
-  <details class="collapsible-section" id="sec-weeks" style="display:none">
-    <summary><h2>Suggested sprint-week allocation</h2></summary>
+  <details class="collapsible-section" id="sec-weeks" style="display:none" open>
+    <summary><h2>Suggested sprint-week allocation — the sprint planner</h2></summary>
     <div class="meta">Non-critical items are queued per person, oldest/highest-urgency first, filling each person's estimated weekly capacity before spilling into the next week. Critical items (see banner above) are always slotted into this week, on top of this queue.</div>
     <div id="week-groups"></div>
   </details>
@@ -379,7 +328,7 @@
     <tbody id="rows-unassigned"></tbody></table></div>
   </details>
 
-  <details class="collapsible-section" id="sec-carryover" style="display:none" open>
+  <details class="collapsible-section" id="sec-carryover" style="display:none">
     <summary><h2>Open items in sprints that have already ended<span class="section-count" id="count-carryover"></span></h2></summary>
     <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished. "Slipped" is an approximate count of past sprints that have ended since the item was created — a 2nd+ slip is flagged per the Friday-review check in the planning doc.</div>
     <div class="table-wrap"><table><thead><tr>
@@ -397,46 +346,6 @@
     </tr></thead>
     <tbody id="rows-testrejected"></tbody></table></div>
   </details>
-
-  </div><!-- /tab-planner -->
-
-  <div id="tab-performance" style="display:none">
-    <div id="perf-empty" class="meta">Click "Analyze Team" above to load data — this tab ranks developers from the same load, so there's nothing to show until then.</div>
-    <div id="perf-content" style="display:none">
-      <div class="perf-head">
-        <h2>Team performance ranking</h2>
-        <span class="perf-asof" id="perf-asof"></span>
-      </div>
-      <div class="perf-meta">Composite score over the last <span id="perf-lookback-weeks"></span> week(s), equal-weighted across 5 metrics: effort delivered, completion time, priority handling, severity handling, and WIP completion rate. Each metric is scaled 0–100 relative to this team, then averaged — not a judgment of who's "best," just one read on the data ADO has.</div>
-
-      <div class="perf-kpi-row" id="perf-kpi-row"></div>
-
-      <div class="perf-chart-row">
-        <div class="perf-card">
-          <div class="perf-card-title"><span class="dot"></span>Composite ranking</div>
-          <div class="perf-chart-wrap"><canvas id="chart-perf-rank"></canvas></div>
-        </div>
-        <div class="perf-card">
-          <div class="perf-card-title"><span class="dot" style="background:#00c2a8;box-shadow:0 0 8px #00c2a8"></span>Completions by developer</div>
-          <div class="perf-chart-wrap small"><canvas id="chart-perf-donut"></canvas></div>
-        </div>
-      </div>
-
-      <div class="perf-card">
-        <div class="perf-card-title"><span class="dot" style="background:#f0b450;box-shadow:0 0 8px #f0b450"></span>Metric breakdown per developer</div>
-        <div class="perf-dev-grid" id="perf-dev-grid"></div>
-      </div>
-
-      <div class="perf-card">
-        <div class="perf-card-title"><span class="dot" style="background:#f0606e;box-shadow:0 0 8px #f0606e"></span>Full leaderboard</div>
-        <div class="table-wrap"><table class="perf-rank-table"><thead><tr>
-          <th>Rank</th><th>Developer</th><th>Composite</th><th>Effort delivered</th><th>Completion time</th>
-          <th>Priority handling</th><th>Severity handling</th><th>WIP completion</th><th>Completions</th>
-        </tr></thead>
-        <tbody id="rows-perf-rank"></tbody></table></div>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -777,6 +686,14 @@ function sprintStatusBadge(s) {
   if (r.status === 'unscheduled') return '<span class="badge badge-warn">Not yet scheduled</span>';
   if (r.status === 'pool') return '<span class="badge badge-warn">Unallocated Pool</span>';
   return '<span class="badge badge-muted">—</span>';
+}
+// Inline per-row indicator for the sprint-rebalancing suggestions — set by
+// renderMoveSuggestions() into window._moveFlags before these tables render.
+function moveIndicatorBadge(it) {
+  const flags = window._moveFlags || { pull: {}, drop: {} };
+  if (flags.pull[it.id]) return `<span class="metric-chip tier-bad" title="Move into ${flags.pull[it.id]}"><span class="chip-dot"></span>\u{1F501} Move to ${flags.pull[it.id]}</span>`;
+  if (flags.drop[it.id]) return `<span class="metric-chip tier-warn" title="Lower urgency — frees room for #${flags.drop[it.id]}"><span class="chip-dot"></span>⬇ Consider dropping</span>`;
+  return '';
 }
 
 const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
@@ -1244,6 +1161,7 @@ function computeAndRender() {
 
   renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals);
   renderScrum(scored, currentIteration);
+  renderMoveSuggestions(scored, currentIteration);
   renderCapacityCard({ devsCount, devHoursPerDay, devDaysPerWeek, rejectionRatePct, rejectionRateIsAssumed,
                         reworkEffortPct, completedInWindow, assumedByType, lookbackWeeks });
   renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems);
@@ -1261,214 +1179,6 @@ function computeAndRender() {
   renderCarryover(carryoverItems);
   renderPool(scoredPool);
   renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, rejectionRateIsAssumed, reworkEffortPct);
-  renderPerformanceTab(byPerson, lookbackWeeks, wipLimit);
-}
-
-// ---------------------------------------------------------------------
-// Team Performance tab — a single equal-weighted composite score per
-// developer across 5 metrics, computed from the same completed-item and
-// WIP data as the planner. Each metric is min-max scaled 0-100 across
-// this team (so it's a relative read, not an absolute grade), then the
-// 5 scaled metrics are averaged for the composite.
-//   - Effort delivered: total completed-item effort hours this window
-//   - Completion time: average cycle time (Created -> Changed/Closed) in
-//     days, lower is better, so this one is inverted after scaling
-//   - Priority handling: % of completed items that were P1/P2
-//   - Severity handling: % of completed items with a critical severity
-//   - WIP completion: completed / (completed + still-open-WIP)
-// ---------------------------------------------------------------------
-function minMaxScale(values) {
-  const nums = values.filter(v => v != null && !isNaN(v));
-  if (!nums.length) return () => 50; // nothing to compare against
-  const min = Math.min(...nums), max = Math.max(...nums);
-  if (max === min) return (v) => (v == null || isNaN(v)) ? 50 : 100;
-  return (v) => (v == null || isNaN(v)) ? 0 : Math.round(((v - min) / (max - min)) * 1000) / 10;
-}
-// Deterministic per-person avatar color, drawn from the same family used
-// elsewhere on this page so a given name always gets the same color.
-const PERF_AVATAR_PALETTE = ['#3f51b5', '#00897b', '#8e24aa', '#c62828', '#00acc1', '#6d4c41', '#558b2f', '#ad1457', '#5e35b1', '#00695c'];
-function avatarColorFor(name) {
-  let h = 0;
-  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return PERF_AVATAR_PALETTE[h % PERF_AVATAR_PALETTE.length];
-}
-// Tiering for color-coded chips/bars: >=70 good, >=40 warn, else bad.
-function tierFor(score) {
-  if (score == null || isNaN(score)) return 'na';
-  return score >= 70 ? 'good' : score >= 40 ? 'warn' : 'bad';
-}
-const TIER_COLOR = { good: '#43d9a3', warn: '#f0b450', bad: '#f0606e', na: '#3a4157' };
-
-function renderPerformanceTab(byPerson, lookbackWeeks, wipLimit) {
-  document.getElementById('perf-lookback-weeks').textContent = lookbackWeeks;
-  document.getElementById('perf-asof').textContent = 'As of ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  const people = Object.values(byPerson).filter(p => p.completed.length > 0 || p.wipCount > 0);
-
-  if (!people.length) {
-    document.getElementById('perf-empty').style.display = 'block';
-    document.getElementById('perf-content').style.display = 'none';
-    return;
-  }
-  document.getElementById('perf-empty').style.display = 'none';
-  document.getElementById('perf-content').style.display = 'block';
-
-  const metrics = people.map(p => {
-    const n = p.completed.length;
-    const effortHours = p.completed.reduce((sum, c) => sum + (c.effort ? c.effort.hours : 0), 0);
-    const cycleTimes = p.completed.map(c => c.cycleDays).filter(v => v != null);
-    const avgCycleDays = cycleTimes.length ? cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length : null;
-    const p1p2Count = p.completed.filter(c => parseLeadingNumber(c.urgency.priorityRaw) != null && parseLeadingNumber(c.urgency.priorityRaw) <= 2).length;
-    const priorityPct = n ? (p1p2Count / n) * 100 : null;
-    const critSeverityCount = p.completed.filter(c => c.urgency.critical).length;
-    const severityPct = n ? (critSeverityCount / n) * 100 : null;
-    const wipTotal = n + (p.wipCount || 0);
-    const wipCompletionPct = wipTotal ? (n / wipTotal) * 100 : null;
-    return { name: p.name, n, effortHours, avgCycleDays, priorityPct, severityPct, wipCompletionPct, wipCount: p.wipCount || 0 };
-  });
-
-  const scaleEffort = minMaxScale(metrics.map(m => m.effortHours));
-  const scaleCycle = minMaxScale(metrics.map(m => m.avgCycleDays));
-  const scalePriority = minMaxScale(metrics.map(m => m.priorityPct));
-  const scaleSeverity = minMaxScale(metrics.map(m => m.severityPct));
-  const scaleWip = minMaxScale(metrics.map(m => m.wipCompletionPct));
-
-  const scored = metrics.map(m => {
-    const effortScore = scaleEffort(m.effortHours);
-    const cycleScoreRaw = scaleCycle(m.avgCycleDays);
-    const cycleScore = m.avgCycleDays == null ? 50 : 100 - cycleScoreRaw; // lower cycle time is better
-    const priorityScore = scalePriority(m.priorityPct);
-    const severityScore = scaleSeverity(m.severityPct);
-    const wipScore = scaleWip(m.wipCompletionPct);
-    const composite = (effortScore + cycleScore + priorityScore + severityScore + wipScore) / 5;
-    return { ...m, effortScore, cycleScore, priorityScore, severityScore, wipScore, composite: Math.round(composite * 10) / 10 };
-  }).sort((a, b) => b.composite - a.composite);
-
-  // ---- KPI strip ----
-  const totalCompletions = scored.reduce((sum, s) => sum + s.n, 0);
-  const teamAvgComposite = Math.round((scored.reduce((sum, s) => sum + s.composite, 0) / scored.length) * 10) / 10;
-  const cycleVals = scored.map(s => s.avgCycleDays).filter(v => v != null);
-  const teamAvgCycle = cycleVals.length ? Math.round((cycleVals.reduce((a, b) => a + b, 0) / cycleVals.length) * 10) / 10 : null;
-  const top = scored[0];
-  const kpis = [
-    { label: 'Top performer', value: top ? top.name : '—', sub: top ? `Composite ${top.composite}` : '', icon: '\u{1F3C6}', accent: '#caa23a' },
-    { label: 'Team avg composite', value: teamAvgComposite, sub: `across ${scored.length} developer(s)`, icon: '\u{1F4CA}', accent: '#6a5ff0' },
-    { label: 'Completions (window)', value: totalCompletions, sub: `last ${lookbackWeeks} week(s)`, icon: '✅', accent: '#43d9a3' },
-    { label: 'Avg completion time', value: teamAvgCycle == null ? 'n/a' : teamAvgCycle + 'd', sub: 'created → closed', icon: '⏱', accent: '#00c2a8' },
-  ];
-  document.getElementById('perf-kpi-row').innerHTML = kpis.map(k => `
-    <div class="perf-kpi-tile" style="--kpi-accent:${k.accent}">
-      <span class="kpi-icon">${k.icon}</span>
-      <div class="kpi-label">${k.label}</div>
-      <div class="kpi-value">${k.value}</div>
-      <div class="kpi-sub">${k.sub}</div>
-    </div>`).join('');
-
-  renderPerfRankChart('chart-perf-rank', scored.map(s => s.name), scored.map(s => s.composite));
-  renderPerfDonutChart('chart-perf-donut', scored.map(s => s.name), scored.map(s => s.n));
-
-  const rankBadge = (i) => {
-    const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
-    return `<span class="perf-rank-badge ${cls}">${i + 1}</span>`;
-  };
-  const initials = (name) => (name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-  const avatarHtml = (name, size) => `<span class="perf-avatar" style="background:${avatarColorFor(name)}${size ? `;width:${size}px;height:${size}px` : ''}">${initials(name)}</span>`;
-  const chip = (val, suffix, score) => {
-    const t = val == null ? 'na' : tierFor(score);
-    const text = val == null ? 'n/a' : `${Math.round(val)}${suffix || ''}`;
-    return `<span class="perf-metric-chip tier-${t}"><span class="chip-dot"></span>${text}</span>`;
-  };
-  const scoreBar = (v) => `<div class="perf-score-bar-track"><div class="perf-score-bar-fill" style="width:${Math.max(2, v)}%;background:${TIER_COLOR[tierFor(v)]}"></div></div>`;
-
-  document.getElementById('rows-perf-rank').innerHTML = scored.map((s, i) => `
-    <tr>
-      <td>${rankBadge(i)}</td>
-      <td><div class="perf-name-cell">${avatarHtml(s.name)}${s.name}</div></td>
-      <td><div class="perf-composite-cell"><span class="perf-composite-num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</span>${scoreBar(s.composite)}</div></td>
-      <td>${chip(s.effortHours, 'h', s.effortScore)}</td>
-      <td>${chip(s.avgCycleDays, 'd', s.cycleScore)}</td>
-      <td>${chip(s.priorityPct, '%', s.priorityScore)}</td>
-      <td>${chip(s.severityPct, '%', s.severityScore)}</td>
-      <td>${chip(s.wipCompletionPct, '%', s.wipScore)}</td>
-      <td>${s.n}</td>
-    </tr>`).join('');
-
-  // ---- Per-developer breakdown cards ----
-  const miniBar = (label, val, suffix, score) => `
-    <div class="pdc-metric-row">
-      <span class="m-label">${label}</span>
-      <div class="pdc-mini-track"><div class="pdc-mini-fill" style="width:${Math.max(2, score == null ? 0 : score)}%;background:${TIER_COLOR[tierFor(score)]}"></div></div>
-      <span class="m-val">${val == null ? 'n/a' : Math.round(val) + (suffix || '')}</span>
-    </div>`;
-  document.getElementById('perf-dev-grid').innerHTML = scored.map((s, i) => `
-    <div class="perf-dev-card">
-      <div class="pdc-head">
-        ${avatarHtml(s.name, 38)}
-        <div>
-          <div class="pdc-name">${s.name}</div>
-          <div class="pdc-rank">Rank #${i + 1} of ${scored.length}</div>
-        </div>
-        <div class="pdc-score">
-          <div class="num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</div>
-          <div class="lbl">Composite</div>
-        </div>
-      </div>
-      ${miniBar('Effort', s.effortHours, 'h', s.effortScore)}
-      ${miniBar('Comp. time', s.avgCycleDays, 'd', s.cycleScore)}
-      ${miniBar('Priority', s.priorityPct, '%', s.priorityScore)}
-      ${miniBar('Severity', s.severityPct, '%', s.severityScore)}
-      ${miniBar('WIP comp.', s.wipCompletionPct, '%', s.wipScore)}
-      <div class="pdc-foot"><span>${s.n} completed</span><span>${s.wipCount} in WIP</span></div>
-    </div>`).join('');
-}
-
-let perfChart = null;
-function renderPerfRankChart(canvasId, labels, data) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas || typeof Chart === 'undefined') return;
-  if (perfChart) perfChart.destroy();
-  const colors = data.map(v => TIER_COLOR[tierFor(v)]);
-  perfChart = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: { labels, datasets: [{ label: 'Composite score', data, backgroundColor: colors, borderRadius: 6, maxBarThickness: 26 }] },
-    options: {
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { beginAtZero: true, max: 100, grid: { color: '#262b3d' }, ticks: { color: '#9aa3bd' } },
-        y: { grid: { display: false }, ticks: { color: '#e4e7f2', font: { weight: '600' } } },
-      },
-      maintainAspectRatio: false,
-    },
-  });
-}
-
-let perfDonutChart = null;
-const PERF_DONUT_PALETTE = ['#6a5ff0', '#00c2a8', '#f0b450', '#f0606e', '#3f8cf0', '#c362e8', '#43d9a3', '#e88a3a'];
-function renderPerfDonutChart(canvasId, labels, data) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas || typeof Chart === 'undefined') return;
-  if (perfDonutChart) perfDonutChart.destroy();
-  perfDonutChart = new Chart(canvas.getContext('2d'), {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: PERF_DONUT_PALETTE.slice(0, Math.max(labels.length, 1)), borderColor: '#131620', borderWidth: 2 }] },
-    options: {
-      cutout: '65%',
-      plugins: { legend: { position: 'bottom', labels: { color: '#cfd3e4', boxWidth: 10, padding: 10, font: { size: 11 } } } },
-      maintainAspectRatio: false,
-    },
-  });
-}
-
-function switchTab(name) {
-  const planner = document.getElementById('tab-planner');
-  const perf = document.getElementById('tab-performance');
-  const btnPlanner = document.getElementById('tabbtn-planner');
-  const btnPerf = document.getElementById('tabbtn-performance');
-  const onPlanner = name === 'planner';
-  planner.style.display = onPlanner ? 'block' : 'none';
-  perf.style.display = onPlanner ? 'none' : 'block';
-  btnPlanner.classList.toggle('active', onPlanner);
-  btnPerf.classList.toggle('active', !onPlanner);
 }
 
 // ---------------------------------------------------------------------
@@ -1483,7 +1193,7 @@ function renderScrum(scored, currentIteration) {
   const sec = document.getElementById('sec-scrum');
   sec.style.display = 'block';
 
-  const pulseBits = [];
+  const tiles = [];
   if (currentIteration && currentIteration.attributes) {
     const start = new Date(currentIteration.attributes.startDate);
     const end = new Date(currentIteration.attributes.finishDate);
@@ -1491,36 +1201,117 @@ function renderScrum(scored, currentIteration) {
     const daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
     const inSprint = scored.filter(s => field(s.item, 'System.IterationPath') === currentIteration.path);
     const criticalInSprint = inSprint.filter(s => s.urgency.critical).length;
-    pulseBits.push(`<div class="pulse-item"><span class="big">${currentIteration.name}</span>current sprint</div>`);
-    pulseBits.push(`<div class="pulse-item"><span class="big">${daysLeft} / ${totalDays}</span>days left</div>`);
-    pulseBits.push(`<div class="pulse-item"><span class="big">${inSprint.length}</span>open items in this sprint</div>`);
-    pulseBits.push(`<div class="pulse-item"><span class="big" style="color:${criticalInSprint ? 'var(--bad)' : 'inherit'}">${criticalInSprint}</span>critical in this sprint</div>`);
+    tiles.push({ label: 'Current sprint', value: currentIteration.name, sub: '', icon: '\u{1F4C5}', accent: '#6a5ff0' });
+    tiles.push({ label: 'Days left', value: `${daysLeft} / ${totalDays}`, sub: 'in this sprint', icon: '⏱', accent: '#00c2a8' });
+    tiles.push({ label: 'Open in sprint', value: inSprint.length, sub: 'items', icon: '\u{1F4CB}', accent: '#3f8cf0' });
+    tiles.push({ label: 'Critical in sprint', value: criticalInSprint, sub: 'priority/severity', icon: '\u{1F6A8}', accent: criticalInSprint ? '#f0606e' : '#43d9a3' });
   } else {
-    pulseBits.push(`<div class="pulse-item">No current sprint found for this team's iteration schedule.</div>`);
+    tiles.push({ label: 'Current sprint', value: 'None found', sub: "check this team's iteration schedule", icon: '❓', accent: '#74799a' });
   }
-  document.getElementById('scrum-pulse').innerHTML = pulseBits.join('');
+  const blockedCount = scored.filter(s => isBlockedState(s.item)).length;
+  tiles.push({ label: 'Blocked', value: blockedCount, sub: 'need unblocking', icon: '⛔', accent: blockedCount ? '#f0606e' : '#43d9a3' });
+
+  document.getElementById('scrum-pulse').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--kpi-accent:${t.accent}">
+      <span class="kpi-icon">${t.icon}</span>
+      <div class="kpi-label">${t.label}</div>
+      <div class="kpi-value">${t.value}</div>
+      <div class="kpi-sub">${t.sub}</div>
+    </div>`).join('');
+
+  const fl = (s) => {
+    const it = s.item;
+    const idCell = workItemBaseUrl
+      ? `<a class="fl-id" href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener">#${it.id}</a>`
+      : `<span class="fl-id">#${it.id}</span>`;
+    return `<li>${idCell}<span class="fl-title">${field(it, 'System.Title')}</span><span class="badge badge-muted">${s.assignee || 'Unassigned'}</span></li>`;
+  };
 
   const focus = scored.filter(isP1P2).slice(0, 5);
   document.getElementById('scrum-focus').innerHTML = focus.length
-    ? focus.map(s => {
-        const it = s.item;
-        const idCell = workItemBaseUrl
-          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none">#${it.id}</a>`
-          : `#${it.id}`;
-        return `<li>${idCell} ${field(it, 'System.Title')} <span class="badge badge-muted">${s.assignee || 'Unassigned'}</span></li>`;
-      }).join('')
+    ? focus.map(fl).join('')
     : '<li class="empty" style="border:none">Nothing at P1/P2 right now.</li>';
 
   const blocked = scored.filter(s => isBlockedState(s.item));
   document.getElementById('scrum-blockers').innerHTML = blocked.length
-    ? blocked.map(s => {
-        const it = s.item;
-        const idCell = workItemBaseUrl
-          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);font-weight:700;text-decoration:none">#${it.id}</a>`
-          : `#${it.id}`;
-        return `<li>${idCell} ${field(it, 'System.Title')} <span class="badge badge-muted">${s.assignee || 'Unassigned'}</span></li>`;
-      }).join('')
+    ? blocked.map(fl).join('')
     : '<li class="empty" style="border:none">Nothing blocked.</li>';
+}
+
+// ---------------------------------------------------------------------
+// Sprint rebalancing suggestions — flags open items whose urgency
+// (priority/severity) now makes them critical or P1/P2 but which aren't
+// in the current sprint yet (still in the pool, a future sprint, or
+// still showing against a past one). For each, suggests the lowest-
+// urgency item already in that same person's current-sprint load that
+// could be dropped/deferred to make room. This is a heads-up, not an
+// automatic change — nothing here moves anything in ADO.
+// ---------------------------------------------------------------------
+function computeMoveSuggestions(scored, currentIteration) {
+  if (!currentIteration) return [];
+  const byAssignee = {};
+  scored.forEach(s => { if (s.assignee) (byAssignee[s.assignee] = byAssignee[s.assignee] || []).push(s); });
+
+  const suggestions = [];
+  scored.forEach(s => {
+    if (!s.assignee) return;
+    const inCurrent = field(s.item, 'System.IterationPath') === currentIteration.path;
+    const isUrgent = s.urgency.critical || isP1P2(s);
+    if (!isUrgent || inCurrent) return;
+    const candidates = (byAssignee[s.assignee] || []).filter(o =>
+      o !== s && field(o.item, 'System.IterationPath') === currentIteration.path && !o.urgency.critical && !isP1P2(o));
+    candidates.sort((a, b) => a.urgency.urgencyScore - b.urgency.urgencyScore);
+    suggestions.push({ pull: s, drop: candidates[0] || null });
+  });
+  // Most urgent pulls first.
+  suggestions.sort((a, b) => b.pull.urgency.urgencyScore - a.pull.urgency.urgencyScore);
+  return suggestions;
+}
+function renderMoveSuggestions(scored, currentIteration) {
+  const sec = document.getElementById('sec-rebalance');
+  const list = document.getElementById('move-list');
+  if (!currentIteration) {
+    sec.style.display = 'block';
+    list.innerHTML = '<li class="empty" style="border:none">No current sprint found for this team — nothing to rebalance against.</li>';
+    window._moveFlags = { pull: {}, drop: {} };
+    return;
+  }
+  sec.style.display = 'block';
+  const suggestions = computeMoveSuggestions(scored, currentIteration);
+
+  // Stash a lookup so the open-items and sprint-planner tables can show an
+  // inline indicator on exactly the rows these suggestions are about.
+  const pullMap = {}, dropMap = {};
+  suggestions.forEach(({ pull, drop }) => {
+    pullMap[pull.item.id] = currentIteration.name;
+    if (drop) dropMap[drop.item.id] = pull.item.id;
+  });
+  window._moveFlags = { pull: pullMap, drop: dropMap };
+
+  if (!suggestions.length) {
+    list.innerHTML = `<li class="empty" style="border:none">Everything urgent is already in ${currentIteration.name} — no moves needed.</li>`;
+    return;
+  }
+  const idLink = (it, color) => workItemBaseUrl
+    ? `<a class="fl-id" href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="${color ? `color:${color}` : ''}">#${it.id}</a>`
+    : `<span class="fl-id">#${it.id}</span>`;
+  list.innerHTML = suggestions.map(({ pull, drop }) => {
+    const p = pull.item;
+    const why = pull.urgency.critical ? 'now critical' : 'now P1/P2';
+    const whereFrom = field(p, 'System.IterationPath') ? field(p, 'System.IterationPath').split('\\').pop() : 'Unallocated Pool';
+    const dropLine = drop
+      ? `<span class="mv-drop">To make room, consider dropping/deferring ${idLink(drop.item, 'var(--bad)')} "${field(drop.item, 'System.Title')}" — lower urgency, still in ${currentIteration.name}.</span>`
+      : `<span class="mv-drop">No lower-urgency item of ${pull.assignee}'s is in ${currentIteration.name} right now — may just need the headroom.</span>`;
+    return `
+      <li class="move-row">
+        <span class="move-icon">\u{1F501}</span>
+        <div class="move-body">
+          ${idLink(p)} <strong>${field(p, 'System.Title')}</strong> (${pull.assignee}) is <span class="mv-why">${why}</span>
+          but sitting in <em>${whereFrom}</em> — move into <strong>${currentIteration.name}</strong>.
+          ${dropLine}
+        </div>
+      </li>`;
+  }).join('');
 }
 
 // ---------------------------------------------------------------------
@@ -1791,7 +1582,7 @@ function renderOpenTable() {
           <td>${s.assignee || 'Unassigned'}</td>
           <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
           <td>${riskCell}</td>
-          <td>${sprintStatusBadge(s)}</td>
+          <td>${sprintStatusBadge(s)} ${moveIndicatorBadge(it)}</td>
         </tr>`;
       }).join('')
     : `<tr><td colspan="11" class="empty">Nothing at P1/P2 right now</td></tr>`;
@@ -1822,7 +1613,7 @@ function renderOpenTable() {
           <td>${s.assignee || 'Unassigned'}</td>
           <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
           <td>${s.assignee ? weekLabel(s.suggestedWeek) : '—'}</td>
-          <td>${sprintStatusBadge(s)}</td>
+          <td>${sprintStatusBadge(s)} ${moveIndicatorBadge(it)}</td>
         </tr>`;
       }).join('')
     : `<tr><td colspan="12" class="empty">No open items for this team</td></tr>`;
@@ -1883,12 +1674,12 @@ function renderWeekGroups(assignedScored) {
         <td>${s.urgency.priorityRaw || '—'}</td>
         <td>${s.urgency.severityRaw || '—'}</td>
         <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label}</td>
-        <td>${sprintStatusBadge(s)}</td>
+        <td>${sprintStatusBadge(s)} ${moveIndicatorBadge(it)}</td>
       </tr>`;
     }).join('');
     return `<div class="week-group">
       <div class="week-head"><h3>${weekLabel(w)}</h3><span class="cap-note">${items.length} item(s)</span></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>In right sprint?</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>In right sprint? / Sprint action</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     </div>`;
   }).join('');
