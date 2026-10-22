@@ -89,6 +89,28 @@
   .wip-bar-fill { height: 100%; background: var(--accent); }
   .wip-bar-fill.over { background: var(--bad); }
   .complexity-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .jump-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 20px; }
+  .jump-nav a { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--accent); background: #fff; border: 1px solid var(--border); border-radius: 2px;
+    padding: 6px 10px; text-decoration: none; }
+  .jump-nav a:hover { background: #e8eaf6; }
+  .scrum-pulse { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-bottom: 18px;
+    background: #eef0fb; border-radius: 2px; padding: 14px 16px; }
+  .scrum-pulse .pulse-item { font-size: 13px; }
+  .scrum-pulse .pulse-item .big { font-size: 20px; font-weight: 700; display: block; }
+  .scrum-focus-list { list-style: none; margin: 0; padding: 0; }
+  .scrum-focus-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .scrum-focus-list li:last-child { border-bottom: none; }
+  .scrum-blockers { font-size: 13px; }
+  .scrum-blockers li { margin-bottom: 4px; }
+  details.collapsible-section > summary { cursor: pointer; list-style: none; }
+  details.collapsible-section > summary::-webkit-details-marker { display: none; }
+  details.collapsible-section > summary h2 { display: inline; }
+  details.collapsible-section > summary::before { content: '▸ '; color: var(--muted); font-size: 12px; }
+  details.collapsible-section[open] > summary::before { content: '▾ '; }
+  .section-count { font-weight: 400; color: var(--muted); font-size: 12px; text-transform: none; margin-left: 6px; }
+  label.inline-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+    text-transform: none; font-weight: 600; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -97,6 +119,11 @@
 
   <h1>Dev Planner</h1>
   <div class="subtitle">Focused on the development team: weekly capacity vs. real velocity, each developer's week, a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), test rejections, and everything still open in sprints that have already ended.</div>
+  <nav class="jump-nav" id="jump-nav" style="display:none">
+    <a href="#sec-scrum">Scrum</a><a href="#sec-open">P1/P2</a><a href="#sec-capacity-card">Capacity</a>
+    <a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a><a href="#sec-carryover">Carry-over</a>
+    <a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
+  </nav>
 
   <div class="config">
     <div style="display:none">
@@ -143,7 +170,7 @@
         <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
         <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
         <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
-        <div class="field"><label>Only include items created after</label><input id="createdAfter" type="date" value="2025-11-01"></div>
+        <div class="field"><label>Only include items created after (optional — leave blank to see everything open)</label><input id="createdAfter" type="date"></div>
         <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
         <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
         <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
@@ -166,6 +193,50 @@
     <ul id="banner-critical-list"></ul>
   </div>
 
+  <section id="sec-scrum" style="display:none">
+    <h2>Today's scrum</h2>
+    <div class="meta">Sprint pulse, what this week is actually about, and anything blocked — the three things a stand-up needs on screen.</div>
+    <div class="scrum-pulse" id="scrum-pulse"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <h3 style="font-size:13px;margin:0 0 6px 0">This week's focus (top P1/P2, by priority)</h3>
+        <ul class="scrum-focus-list" id="scrum-focus"></ul>
+      </div>
+      <div>
+        <h3 style="font-size:13px;margin:0 0 6px 0">Blocked right now</h3>
+        <ul class="scrum-focus-list scrum-blockers" id="scrum-blockers"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-open" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>P1 / P2 — needs attention</h2>
+      <label class="inline-check"><input type="checkbox" id="p2AtRiskOnly" checked onchange="renderOpenTable()"> Show only at-risk P2 (hide the rest for stand-up)</label>
+    </div>
+    <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+      <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
+    </tr></thead>
+    <tbody id="rows-open-priority"></tbody></table></div>
+
+    <details style="margin-top:22px">
+      <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h2 style="display:inline">Everything else — open items</h2>
+        <div class="field" style="min-width:200px;display:inline-flex">
+          <select id="openAssigneeFilter" onchange="renderOpenTable()" onclick="event.stopPropagation()"><option value="">Filter by assignee: All</option></select>
+        </div>
+      </summary>
+      <div class="meta" id="meta-open" style="margin-top:12px"></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+        <th>Complexity</th><th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
+      </tr></thead>
+      <tbody id="rows-open"></tbody></table></div>
+    </details>
+  </section>
+
   <section id="sec-capacity-card" style="display:none">
     <h2>Weekly capacity — worked example</h2>
     <div class="meta" id="meta-capacity-card"></div>
@@ -174,88 +245,65 @@
 
   <div id="overview-stats" class="grid" style="display:none"></div>
 
-  <section id="sec-wip" style="display:none">
-    <h2>WIP per person</h2>
-    <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
-    <div id="wip-cards"></div>
-  </section>
-
   <section id="sec-devperf" style="display:none">
-    <h2>Developer weekly performance</h2>
-    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity, vs. what's actually been completed and assigned this week.</div>
+    <h2>Developer weekly performance &amp; workload</h2>
+    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours).</div>
     <div class="table-wrap"><table><thead><tr>
       <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
+      <th>Assigned effort (h)</th><th>vs. capacity</th><th>Filling their time?</th>
     </tr></thead>
     <tbody id="rows-devperf"></tbody></table></div>
   </section>
 
-  <section id="sec-open" style="display:none">
-    <h2>P1 / P2 — needs attention</h2>
-    <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
-    </tr></thead>
-    <tbody id="rows-open-priority"></tbody></table></div>
+  <details class="collapsible-section" id="sec-wip" style="display:none">
+    <summary><h2>WIP per person<span class="section-count" id="count-wip"></span></h2></summary>
+    <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
+    <div id="wip-cards"></div>
+  </details>
 
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:22px">
-      <h2>Everything else — open items</h2>
-      <div class="field" style="min-width:200px">
-        <label>Filter by assignee</label>
-        <select id="openAssigneeFilter" onchange="renderOpenTable()"><option value="">All</option></select>
-      </div>
-    </div>
-    <div class="meta" id="meta-open"></div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Complexity</th><th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
-    </tr></thead>
-    <tbody id="rows-open"></tbody></table></div>
-  </section>
-
-  <section id="sec-pool" style="display:none">
-    <h2>Unallocated Pool</h2>
+  <details class="collapsible-section" id="sec-pool" style="display:none">
+    <summary><h2>Unallocated Pool<span class="section-count" id="count-pool"></span></h2></summary>
     <div class="meta" id="meta-pool">Items sitting in the "Unallocated Pool" iteration — not on anyone's schedule. Kept separate from the sprint-week queue below; sorted by how long they've been sitting there, longest first.</div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
       <th>Complexity</th><th>Assigned To</th><th>Days in pool</th>
     </tr></thead>
     <tbody id="rows-pool"></tbody></table></div>
-  </section>
+  </details>
 
-  <section id="sec-weeks" style="display:none">
-    <h2>Suggested sprint-week allocation</h2>
+  <details class="collapsible-section" id="sec-weeks" style="display:none">
+    <summary><h2>Suggested sprint-week allocation</h2></summary>
     <div class="meta">Non-critical items are queued per person, oldest/highest-urgency first, filling each person's estimated weekly capacity before spilling into the next week. Critical items (see banner above) are always slotted into this week, on top of this queue.</div>
     <div id="week-groups"></div>
-  </section>
+  </details>
 
-  <section id="sec-unassigned" style="display:none">
-    <h2>Unassigned — needs an owner</h2>
+  <details class="collapsible-section" id="sec-unassigned" style="display:none">
+    <summary><h2>Unassigned — needs an owner<span class="section-count" id="count-unassigned"></span></h2></summary>
     <div class="meta">Open items with nobody assigned can't be scheduled into a person's week until someone owns them.</div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>Age (d)</th>
     </tr></thead>
     <tbody id="rows-unassigned"></tbody></table></div>
-  </section>
+  </details>
 
-  <section id="sec-carryover" style="display:none">
-    <h2>Open items in sprints that have already ended</h2>
+  <details class="collapsible-section" id="sec-carryover" style="display:none" open>
+    <summary><h2>Open items in sprints that have already ended<span class="section-count" id="count-carryover"></span></h2></summary>
     <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished. "Slipped" is an approximate count of past sprints that have ended since the item was created — a 2nd+ slip is flagged per the Friday-review check in the planning doc.</div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th><th>Slipped</th>
     </tr></thead>
     <tbody id="rows-carryover"></tbody></table></div>
-  </section>
+  </details>
 
-  <section id="sec-testrejected" style="display:none">
-    <h2>Test Rejected</h2>
+  <details class="collapsible-section" id="sec-testrejected" style="display:none">
+    <summary><h2>Test Rejected</h2></summary>
     <div class="meta" id="meta-testrejected"></div>
     <div class="grid" id="testrejected-stats" style="margin-bottom:16px"></div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>Assigned To</th><th>Rejected at</th><th>Last changed</th>
     </tr></thead>
     <tbody id="rows-testrejected"></tbody></table></div>
-  </section>
+  </details>
 
 </div>
 
@@ -842,6 +890,9 @@ async function loadCapacity() {
     (allIterData.value || []).forEach(it => { iterationByPath[it.path] = it; });
     const pastIterations = (allIterData.value || []).filter(it =>
       it.attributes && it.attributes.finishDate && new Date(it.attributes.finishDate) < now);
+    const currentIteration = (allIterData.value || []).find(it =>
+      it.attributes && it.attributes.startDate && it.attributes.finishDate &&
+      new Date(it.attributes.startDate) <= now && new Date(it.attributes.finishDate) >= now) || null;
 
     let carryoverItems = [];
     if (pastIterations.length) {
@@ -910,7 +961,7 @@ async function loadCapacity() {
       defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath, createdAfter,
       devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
       reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
-      testRejectedItems, testCaseWindowCount, testingStatusFieldRef,
+      testRejectedItems, testCaseWindowCount, testingStatusFieldRef, currentIteration,
     };
 
     setStatus('Scoring and scheduling...');
@@ -943,7 +994,8 @@ function computeAndRender() {
           wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath,
           devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
           reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
-          testRejectedItems, testCaseWindowCount } = lastState;
+          testRejectedItems, testCaseWindowCount, currentIteration } = lastState;
+  document.getElementById('jump-nav').style.display = 'flex';
   const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
 
   // Score every open item once.
@@ -1053,11 +1105,12 @@ function computeAndRender() {
   const rejectionRateIsAssumed = testCaseWindowCount === 0;
 
   renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals);
+  renderScrum(scored, currentIteration);
   renderCapacityCard({ devsCount, devHoursPerDay, devDaysPerWeek, rejectionRatePct, rejectionRateIsAssumed,
                         reworkEffortPct, completedInWindow, assumedByType, lookbackWeeks });
   renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems);
   renderWip(byPerson, wipLimit);
-  renderDevPerf(byPerson);
+  renderDevPerf(byPerson, assumedByType, devHoursPerDay, devDaysPerWeek);
   renderOpenAssigneeFilter(scored);
   window._scoredOpen = scored; // used by renderOpenTable()
   window._assumedByType = assumedByType;
@@ -1070,6 +1123,58 @@ function computeAndRender() {
   renderCarryover(carryoverItems);
   renderPool(scoredPool);
   renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, rejectionRateIsAssumed, reworkEffortPct);
+}
+
+// ---------------------------------------------------------------------
+// Today's scrum — sprint pulse, this week's top P1/P2 focus, and a
+// blocked-right-now list. The three things a stand-up actually needs,
+// pulled to the top of the page instead of buried in the full tables below.
+// ---------------------------------------------------------------------
+function isBlockedState(it) {
+  return /block/i.test(field(it, 'System.State', ''));
+}
+function renderScrum(scored, currentIteration) {
+  const sec = document.getElementById('sec-scrum');
+  sec.style.display = 'block';
+
+  const pulseBits = [];
+  if (currentIteration && currentIteration.attributes) {
+    const start = new Date(currentIteration.attributes.startDate);
+    const end = new Date(currentIteration.attributes.finishDate);
+    const totalDays = Math.max(1, Math.round((end - start) / 86400000));
+    const daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+    const inSprint = scored.filter(s => field(s.item, 'System.IterationPath') === currentIteration.path);
+    const criticalInSprint = inSprint.filter(s => s.urgency.critical).length;
+    pulseBits.push(`<div class="pulse-item"><span class="big">${currentIteration.name}</span>current sprint</div>`);
+    pulseBits.push(`<div class="pulse-item"><span class="big">${daysLeft} / ${totalDays}</span>days left</div>`);
+    pulseBits.push(`<div class="pulse-item"><span class="big">${inSprint.length}</span>open items in this sprint</div>`);
+    pulseBits.push(`<div class="pulse-item"><span class="big" style="color:${criticalInSprint ? 'var(--bad)' : 'inherit'}">${criticalInSprint}</span>critical in this sprint</div>`);
+  } else {
+    pulseBits.push(`<div class="pulse-item">No current sprint found for this team's iteration schedule.</div>`);
+  }
+  document.getElementById('scrum-pulse').innerHTML = pulseBits.join('');
+
+  const focus = scored.filter(isP1P2).slice(0, 5);
+  document.getElementById('scrum-focus').innerHTML = focus.length
+    ? focus.map(s => {
+        const it = s.item;
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none">#${it.id}</a>`
+          : `#${it.id}`;
+        return `<li>${idCell} ${field(it, 'System.Title')} <span class="badge badge-muted">${s.assignee || 'Unassigned'}</span></li>`;
+      }).join('')
+    : '<li class="empty" style="border:none">Nothing at P1/P2 right now.</li>';
+
+  const blocked = scored.filter(s => isBlockedState(s.item));
+  document.getElementById('scrum-blockers').innerHTML = blocked.length
+    ? blocked.map(s => {
+        const it = s.item;
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);font-weight:700;text-decoration:none">#${it.id}</a>`
+          : `#${it.id}`;
+        return `<li>${idCell} ${field(it, 'System.Title')} <span class="badge badge-muted">${s.assignee || 'Unassigned'}</span></li>`;
+      }).join('')
+    : '<li class="empty" style="border:none">Nothing blocked.</li>';
 }
 
 // ---------------------------------------------------------------------
@@ -1109,12 +1214,13 @@ function renderCapacityCard(p) {
 // Per-developer weekly performance — estimated capability (velocity)
 // vs. this week's actual completions and remaining assigned load.
 // ---------------------------------------------------------------------
-function renderDevPerf(byPerson) {
+function renderDevPerf(byPerson, assumedByType, devHoursPerDay, devDaysPerWeek) {
   const sec = document.getElementById('sec-devperf');
   const people = Object.values(byPerson);
   sec.style.display = people.length ? 'block' : 'none';
   if (!people.length) return;
   const [weekStart] = weekRange(0);
+  const capacityHours = (devHoursPerDay || 6) * (devDaysPerWeek || 5);
   document.getElementById('rows-devperf').innerHTML = people.map(p => {
     const estPerWeek = Math.round(p.throughputPerWeek * 10) / 10;
     const completedThisWeek = p.completed.filter(c => new Date(field(c.item, 'System.ChangedDate')) >= weekStart).length;
@@ -1124,12 +1230,27 @@ function renderDevPerf(byPerson) {
     else if (completedThisWeek >= Math.floor(estPerWeek)) badge = '<span class="badge badge-good">On pace</span>';
     else if (completedThisWeek >= Math.floor(estPerWeek / 2)) badge = '<span class="badge badge-warn">Behind pace</span>';
     else badge = '<span class="badge badge-bad">Well behind pace</span>';
+
+    // Workload vs capacity — sum of assigned-item effort hours (real or
+    // assumed) against the team's configured productive hours/week. This is
+    // NOT logged time (ADO has none without a time-tracking field) — it's
+    // whether a person is assigned enough work to fill their week.
+    const assignedHours = p.open.reduce((sum, s) => sum + effortFor(s.item, assumedByType).hours, 0);
+    const pctOfCapacity = capacityHours > 0 ? Math.round((assignedHours / capacityHours) * 100) : 0;
+    let fillBadge;
+    if (pctOfCapacity < 70) fillBadge = `<span class="badge badge-warn">Under-filled (${pctOfCapacity}%)</span>`;
+    else if (pctOfCapacity <= 130) fillBadge = `<span class="badge badge-good">Full (${pctOfCapacity}%)</span>`;
+    else fillBadge = `<span class="badge badge-bad">Overloaded (${pctOfCapacity}%)</span>`;
+
     return `<tr>
       <td>${p.name}</td>
       <td>${p.hasHistory ? estPerWeek : `${estPerWeek} (default)`}</td>
       <td>${completedThisWeek}</td>
       <td>${stillAssigned}</td>
       <td>${badge}</td>
+      <td>${Math.round(assignedHours * 10) / 10}h</td>
+      <td>${Math.round(capacityHours * 10) / 10}h</td>
+      <td>${fillBadge}</td>
     </tr>`;
   }).join('');
 }
@@ -1209,6 +1330,7 @@ function renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPo
 function renderWip(byPerson, wipLimit) {
   const sec = document.getElementById('sec-wip');
   const people = Object.values(byPerson).sort((a, b) => b.wipCount - a.wipCount);
+  document.getElementById('count-wip').textContent = ` (${people.length})`;
   sec.style.display = people.length ? 'block' : 'none';
   if (!people.length) return;
 
@@ -1263,13 +1385,19 @@ function renderOpenAssigneeFilter(scored) {
   const sel = document.getElementById('openAssigneeFilter');
   const names = [...new Set(scored.map(s => s.assignee || 'Unassigned'))].sort();
   const current = sel.value;
-  sel.innerHTML = '<option value="">All</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.innerHTML = '<option value="">Filter by assignee: All</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
   if (names.includes(current)) sel.value = current;
 }
 
 function isP1P2(s) {
   const n = parseLeadingNumber(s.urgency.priorityRaw);
   return n != null && n <= 2;
+}
+function isP2(s) {
+  return parseLeadingNumber(s.urgency.priorityRaw) === 2;
+}
+function isAtRisk(s, dueSoonDays) {
+  return s.urgency.critical || isBlockedState(s.item) || computeAtRiskFlags(s.item, dueSoonDays, true).length > 0;
 }
 
 function renderOpenTable() {
@@ -1283,10 +1411,17 @@ function renderOpenTable() {
   sec.style.display = 'block';
 
   // ---- P1/P2 needs-attention block (always shows everyone, ignores the
-  // assignee filter below — these take priority regardless of who's viewing) ----
-  const priorityItems = scored.filter(isP1P2);
+  // assignee filter below — these take priority regardless of who's viewing).
+  // P1s always show; P2s can be narrowed to at-risk-only for the stand-up. ----
+  const p2AtRiskOnly = document.getElementById('p2AtRiskOnly').checked;
+  const allP1P2 = scored.filter(isP1P2);
+  const priorityItems = p2AtRiskOnly
+    ? allP1P2.filter(s => !isP2(s) || isAtRisk(s, dueSoonDays))
+    : allP1P2;
+  const hiddenP2Count = allP1P2.length - priorityItems.length;
   document.getElementById('meta-open-priority').textContent =
-    `${priorityItems.length} P1/P2 item(s)` + (priorityItems.length ? '.' : ' — nothing at P1/P2 right now.');
+    `${priorityItems.length} shown of ${allP1P2.length} P1/P2 item(s)` +
+    (hiddenP2Count ? ` (${hiddenP2Count} on-track P2 hidden — untick the box above to see them).` : '.');
   document.getElementById('rows-open-priority').innerHTML = priorityItems.length
     ? priorityItems.map(s => {
         const it = s.item;
@@ -1350,6 +1485,7 @@ function renderOpenTable() {
 function renderPool(scoredPool) {
   const sec = document.getElementById('sec-pool');
   sec.style.display = scoredPool.length ? 'block' : 'none';
+  document.getElementById('count-pool').textContent = scoredPool.length ? ` (${scoredPool.length})` : '';
   if (!scoredPool.length) return;
   const sorted = sortCriticalFirst(scoredPool.slice(), (a, b) => (daysAgo(a.since) ?? -1) < (daysAgo(b.since) ?? -1) ? 1 : -1);
   document.getElementById('meta-pool').textContent =
@@ -1415,6 +1551,7 @@ function renderWeekGroups(assignedScored) {
 function renderUnassigned(unassigned) {
   const sec = document.getElementById('sec-unassigned');
   sec.style.display = unassigned.length ? 'block' : 'none';
+  document.getElementById('count-unassigned').textContent = unassigned.length ? ` (${unassigned.length})` : '';
   if (!unassigned.length) return;
   document.getElementById('rows-unassigned').innerHTML = unassigned.map(s => {
     const it = s.item;
@@ -1440,6 +1577,7 @@ function renderCarryover(carryoverItems) {
     const bOverdue = b.finishDate ? daysAgo(b.finishDate) : -1;
     return bOverdue - aOverdue;
   });
+  document.getElementById('count-carryover').textContent = sorted.length ? ` (${sorted.length})` : '';
   document.getElementById('meta-carryover').textContent =
     `${sorted.length} open item(s) left over from sprint(s) that have already ended — critical items first, then longest overdue first.`;
   document.getElementById('rows-carryover').innerHTML = sorted.length
