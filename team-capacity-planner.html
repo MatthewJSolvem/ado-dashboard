@@ -121,27 +121,81 @@
   .top-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
   /* ---- Team Performance tab: dark, chart-forward, scoped to this tab only ---- */
-  #tab-performance { background: #10131c; color: #e4e7f0; border-radius: 6px; padding: 24px; margin: -4px; }
-  #tab-performance h2 { color: #fff; font-size: 16px; margin: 0 0 4px 0; }
-  #tab-performance .perf-meta { color: #9aa3b8; font-size: 13px; margin-bottom: 18px; }
-  #tab-performance .perf-card { background: #1a1e2c; border: 1px solid #2a3046; border-radius: 8px; padding: 18px; margin-bottom: 20px; }
-  #tab-performance .perf-chart-wrap { height: 320px; }
+  #tab-performance { background: #0c0e16; color: #e4e7f0; border-radius: 10px; padding: 24px; margin: -4px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #tab-performance .perf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 8px; }
+  #tab-performance h2 { color: #fff; font-size: 18px; margin: 0; letter-spacing: 0.2px; }
+  #tab-performance .perf-asof { color: #6b7490; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #tab-performance .perf-meta { color: #8b93ad; font-size: 13px; margin-bottom: 20px; max-width: 760px; line-height: 1.5; }
+  #tab-performance .perf-card { background: linear-gradient(180deg,#161a28,#131620); border: 1px solid #262b3d; border-radius: 12px;
+    padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.5); }
+  #tab-performance .perf-card-title { color: #fff; font-size: 13px; font-weight: 700; margin: 0 0 14px 0; display: flex; align-items: center; gap: 7px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  #tab-performance .perf-card-title .dot { width: 7px; height: 7px; border-radius: 50%; background: #6a5ff0; box-shadow: 0 0 8px #6a5ff0; }
+  #tab-performance .perf-chart-wrap { height: 300px; }
+  #tab-performance .perf-chart-wrap.small { height: 230px; }
+
+  /* KPI strip */
+  .perf-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .perf-kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid #262b3d; border-left: 3px solid var(--kpi-accent, #6a5ff0);
+    border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+  .perf-kpi-tile .kpi-label { color: #8b93ad; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .perf-kpi-tile .kpi-value { color: #fff; font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .perf-kpi-tile .kpi-sub { color: #6b7490; font-size: 11px; margin-top: 5px; }
+  .perf-kpi-tile .kpi-icon { position: absolute; right: 12px; top: 12px; font-size: 20px; opacity: 0.35; }
+
+  /* Two-column chart row */
+  .perf-chart-row { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .perf-chart-row { grid-template-columns: 1fr; } }
+
+  /* Ranking table */
   .perf-rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .perf-rank-table th { text-align: left; color: #9aa3b8; font-weight: 600; font-size: 11px; text-transform: uppercase;
-    letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 1px solid #2a3046; white-space: nowrap; }
-  .perf-rank-table td { padding: 10px; border-bottom: 1px solid #242938; vertical-align: middle; }
+  .perf-rank-table th { text-align: left; color: #74799a; font-weight: 700; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.4px; padding: 0 10px 10px; border-bottom: 1px solid #262b3d; white-space: nowrap; }
+  .perf-rank-table td { padding: 11px 10px; border-bottom: 1px solid #1e2230; vertical-align: middle; }
   .perf-rank-table tr:last-child td { border-bottom: none; }
-  .perf-rank-table tr:hover td { background: #20263a; }
+  .perf-rank-table tr:hover td { background: #191d2c; }
   .perf-rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
-    border-radius: 50%; background: #2a3046; color: #e4e7f0; font-weight: 700; font-size: 12px; }
-  .perf-rank-badge.gold { background: #caa23a; color: #1a1e2c; }
-  .perf-rank-badge.silver { background: #a3abc2; color: #1a1e2c; }
-  .perf-rank-badge.bronze { background: #b5743a; color: #1a1e2c; }
-  .perf-avatar { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
-    border-radius: 50%; background: #3f51b5; color: #fff; font-size: 11px; font-weight: 700; margin-right: 8px; }
-  .perf-metric-pill { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-  .perf-score-bar-track { background: #242938; border-radius: 3px; height: 6px; width: 72px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
-  .perf-score-bar-fill { height: 100%; background: linear-gradient(90deg,#6a5ff0,#8f7bf7); }
+    border-radius: 50%; background: #262b3d; color: #e4e7f0; font-weight: 800; font-size: 12px; flex: none; }
+  .perf-rank-badge.gold { background: linear-gradient(145deg,#f0d060,#caa23a); color: #1a1e2c; box-shadow: 0 0 10px rgba(202,162,58,0.5); }
+  .perf-rank-badge.silver { background: linear-gradient(145deg,#d6dbea,#a3abc2); color: #1a1e2c; box-shadow: 0 0 10px rgba(163,171,194,0.35); }
+  .perf-rank-badge.bronze { background: linear-gradient(145deg,#d3925a,#b5743a); color: #1a1e2c; box-shadow: 0 0 10px rgba(181,116,58,0.35); }
+  .perf-name-cell { display: flex; align-items: center; gap: 10px; }
+  .perf-avatar { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none;
+    border-radius: 50%; color: #fff; font-size: 11.5px; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.15); }
+  .perf-composite-cell { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+  .perf-composite-num { font-size: 16px; font-weight: 800; min-width: 30px; }
+  .perf-score-bar-track { background: #1e2230; border-radius: 3px; height: 7px; width: 70px; overflow: hidden; flex: none; }
+  .perf-score-bar-fill { height: 100%; border-radius: 3px; }
+
+  /* Per-metric chips (color tiered: good/warn/bad) + mini bars used in dev cards */
+  .perf-metric-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .perf-metric-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .perf-metric-chip.tier-good { background: rgba(67,217,163,0.12); color: #43d9a3; }
+  .perf-metric-chip.tier-good .chip-dot { background: #43d9a3; }
+  .perf-metric-chip.tier-warn { background: rgba(240,180,80,0.12); color: #f0b450; }
+  .perf-metric-chip.tier-warn .chip-dot { background: #f0b450; }
+  .perf-metric-chip.tier-bad { background: rgba(240,96,110,0.12); color: #f0606e; }
+  .perf-metric-chip.tier-bad .chip-dot { background: #f0606e; }
+  .perf-metric-chip.tier-na { background: rgba(139,147,173,0.1); color: #74799a; }
+  .perf-metric-chip.tier-na .chip-dot { background: #74799a; }
+
+  /* Developer breakdown cards */
+  .perf-dev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .perf-dev-card { background: linear-gradient(180deg,#161a28,#131620); border: 1px solid #262b3d; border-radius: 12px; padding: 16px; }
+  .perf-dev-card .pdc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .perf-dev-card .pdc-head .perf-avatar { width: 38px; height: 38px; font-size: 14px; }
+  .perf-dev-card .pdc-name { font-weight: 700; color: #fff; font-size: 14px; }
+  .perf-dev-card .pdc-rank { color: #74799a; font-size: 11px; }
+  .perf-dev-card .pdc-score { margin-left: auto; text-align: right; }
+  .perf-dev-card .pdc-score .num { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .perf-dev-card .pdc-score .lbl { color: #6b7490; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .pdc-metric-row { display: grid; grid-template-columns: 76px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 11.5px; }
+  .pdc-metric-row .m-label { color: #8b93ad; font-weight: 600; }
+  .pdc-metric-row .m-val { color: #cfd3e4; font-weight: 700; text-align: right; }
+  .pdc-mini-track { background: #1e2230; border-radius: 3px; height: 6px; overflow: hidden; }
+  .pdc-mini-fill { height: 100%; border-radius: 3px; }
+  .perf-dev-card .pdc-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid #1e2230; color: #6b7490; font-size: 11px; display: flex; justify-content: space-between; }
 </style>
 </head>
 <body>
@@ -349,17 +403,35 @@
   <div id="tab-performance" style="display:none">
     <div id="perf-empty" class="meta">Click "Analyze Team" above to load data — this tab ranks developers from the same load, so there's nothing to show until then.</div>
     <div id="perf-content" style="display:none">
-      <h2>Team performance ranking</h2>
+      <div class="perf-head">
+        <h2>Team performance ranking</h2>
+        <span class="perf-asof" id="perf-asof"></span>
+      </div>
       <div class="perf-meta">Composite score over the last <span id="perf-lookback-weeks"></span> week(s), equal-weighted across 5 metrics: effort delivered, completion time, priority handling, severity handling, and WIP completion rate. Each metric is scaled 0–100 relative to this team, then averaged — not a judgment of who's "best," just one read on the data ADO has.</div>
 
-      <div class="perf-card">
-        <div class="perf-chart-wrap"><canvas id="chart-perf-rank"></canvas></div>
+      <div class="perf-kpi-row" id="perf-kpi-row"></div>
+
+      <div class="perf-chart-row">
+        <div class="perf-card">
+          <div class="perf-card-title"><span class="dot"></span>Composite ranking</div>
+          <div class="perf-chart-wrap"><canvas id="chart-perf-rank"></canvas></div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-title"><span class="dot" style="background:#00c2a8;box-shadow:0 0 8px #00c2a8"></span>Completions by developer</div>
+          <div class="perf-chart-wrap small"><canvas id="chart-perf-donut"></canvas></div>
+        </div>
       </div>
 
       <div class="perf-card">
+        <div class="perf-card-title"><span class="dot" style="background:#f0b450;box-shadow:0 0 8px #f0b450"></span>Metric breakdown per developer</div>
+        <div class="perf-dev-grid" id="perf-dev-grid"></div>
+      </div>
+
+      <div class="perf-card">
+        <div class="perf-card-title"><span class="dot" style="background:#f0606e;box-shadow:0 0 8px #f0606e"></span>Full leaderboard</div>
         <div class="table-wrap"><table class="perf-rank-table"><thead><tr>
           <th>Rank</th><th>Developer</th><th>Composite</th><th>Effort delivered</th><th>Completion time</th>
-          <th>Priority handling</th><th>Severity handling</th><th>WIP completion</th><th>Completions (window)</th>
+          <th>Priority handling</th><th>Severity handling</th><th>WIP completion</th><th>Completions</th>
         </tr></thead>
         <tbody id="rows-perf-rank"></tbody></table></div>
       </div>
@@ -1212,8 +1284,24 @@ function minMaxScale(values) {
   if (max === min) return (v) => (v == null || isNaN(v)) ? 50 : 100;
   return (v) => (v == null || isNaN(v)) ? 0 : Math.round(((v - min) / (max - min)) * 1000) / 10;
 }
+// Deterministic per-person avatar color, drawn from the same family used
+// elsewhere on this page so a given name always gets the same color.
+const PERF_AVATAR_PALETTE = ['#3f51b5', '#00897b', '#8e24aa', '#c62828', '#00acc1', '#6d4c41', '#558b2f', '#ad1457', '#5e35b1', '#00695c'];
+function avatarColorFor(name) {
+  let h = 0;
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PERF_AVATAR_PALETTE[h % PERF_AVATAR_PALETTE.length];
+}
+// Tiering for color-coded chips/bars: >=70 good, >=40 warn, else bad.
+function tierFor(score) {
+  if (score == null || isNaN(score)) return 'na';
+  return score >= 70 ? 'good' : score >= 40 ? 'warn' : 'bad';
+}
+const TIER_COLOR = { good: '#43d9a3', warn: '#f0b450', bad: '#f0606e', na: '#3a4157' };
+
 function renderPerformanceTab(byPerson, lookbackWeeks, wipLimit) {
   document.getElementById('perf-lookback-weeks').textContent = lookbackWeeks;
+  document.getElementById('perf-asof').textContent = 'As of ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   const people = Object.values(byPerson).filter(p => p.completed.length > 0 || p.wipCount > 0);
 
   if (!people.length) {
@@ -1255,28 +1343,82 @@ function renderPerformanceTab(byPerson, lookbackWeeks, wipLimit) {
     return { ...m, effortScore, cycleScore, priorityScore, severityScore, wipScore, composite: Math.round(composite * 10) / 10 };
   }).sort((a, b) => b.composite - a.composite);
 
+  // ---- KPI strip ----
+  const totalCompletions = scored.reduce((sum, s) => sum + s.n, 0);
+  const teamAvgComposite = Math.round((scored.reduce((sum, s) => sum + s.composite, 0) / scored.length) * 10) / 10;
+  const cycleVals = scored.map(s => s.avgCycleDays).filter(v => v != null);
+  const teamAvgCycle = cycleVals.length ? Math.round((cycleVals.reduce((a, b) => a + b, 0) / cycleVals.length) * 10) / 10 : null;
+  const top = scored[0];
+  const kpis = [
+    { label: 'Top performer', value: top ? top.name : '—', sub: top ? `Composite ${top.composite}` : '', icon: '\u{1F3C6}', accent: '#caa23a' },
+    { label: 'Team avg composite', value: teamAvgComposite, sub: `across ${scored.length} developer(s)`, icon: '\u{1F4CA}', accent: '#6a5ff0' },
+    { label: 'Completions (window)', value: totalCompletions, sub: `last ${lookbackWeeks} week(s)`, icon: '✅', accent: '#43d9a3' },
+    { label: 'Avg completion time', value: teamAvgCycle == null ? 'n/a' : teamAvgCycle + 'd', sub: 'created → closed', icon: '⏱', accent: '#00c2a8' },
+  ];
+  document.getElementById('perf-kpi-row').innerHTML = kpis.map(k => `
+    <div class="perf-kpi-tile" style="--kpi-accent:${k.accent}">
+      <span class="kpi-icon">${k.icon}</span>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join('');
+
   renderPerfRankChart('chart-perf-rank', scored.map(s => s.name), scored.map(s => s.composite));
+  renderPerfDonutChart('chart-perf-donut', scored.map(s => s.name), scored.map(s => s.n));
 
   const rankBadge = (i) => {
     const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
     return `<span class="perf-rank-badge ${cls}">${i + 1}</span>`;
   };
   const initials = (name) => (name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-  const pill = (val, suffix) => val == null ? '<span class="perf-metric-pill">n/a</span>' : `<span class="perf-metric-pill">${Math.round(val)}${suffix || ''}</span>`;
-  const scoreBar = (v) => `<div class="perf-score-bar-track"><div class="perf-score-bar-fill" style="width:${Math.max(2, v)}%"></div></div>`;
+  const avatarHtml = (name, size) => `<span class="perf-avatar" style="background:${avatarColorFor(name)}${size ? `;width:${size}px;height:${size}px` : ''}">${initials(name)}</span>`;
+  const chip = (val, suffix, score) => {
+    const t = val == null ? 'na' : tierFor(score);
+    const text = val == null ? 'n/a' : `${Math.round(val)}${suffix || ''}`;
+    return `<span class="perf-metric-chip tier-${t}"><span class="chip-dot"></span>${text}</span>`;
+  };
+  const scoreBar = (v) => `<div class="perf-score-bar-track"><div class="perf-score-bar-fill" style="width:${Math.max(2, v)}%;background:${TIER_COLOR[tierFor(v)]}"></div></div>`;
 
   document.getElementById('rows-perf-rank').innerHTML = scored.map((s, i) => `
     <tr>
       <td>${rankBadge(i)}</td>
-      <td><span class="perf-avatar">${initials(s.name)}</span>${s.name}</td>
-      <td><strong>${s.composite}</strong>${scoreBar(s.composite)}</td>
-      <td>${pill(s.effortHours, 'h')}</td>
-      <td>${s.avgCycleDays == null ? pill(null) : pill(s.avgCycleDays, 'd')}</td>
-      <td>${s.priorityPct == null ? pill(null) : pill(s.priorityPct, '%')}</td>
-      <td>${s.severityPct == null ? pill(null) : pill(s.severityPct, '%')}</td>
-      <td>${s.wipCompletionPct == null ? pill(null) : pill(s.wipCompletionPct, '%')}</td>
+      <td><div class="perf-name-cell">${avatarHtml(s.name)}${s.name}</div></td>
+      <td><div class="perf-composite-cell"><span class="perf-composite-num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</span>${scoreBar(s.composite)}</div></td>
+      <td>${chip(s.effortHours, 'h', s.effortScore)}</td>
+      <td>${chip(s.avgCycleDays, 'd', s.cycleScore)}</td>
+      <td>${chip(s.priorityPct, '%', s.priorityScore)}</td>
+      <td>${chip(s.severityPct, '%', s.severityScore)}</td>
+      <td>${chip(s.wipCompletionPct, '%', s.wipScore)}</td>
       <td>${s.n}</td>
     </tr>`).join('');
+
+  // ---- Per-developer breakdown cards ----
+  const miniBar = (label, val, suffix, score) => `
+    <div class="pdc-metric-row">
+      <span class="m-label">${label}</span>
+      <div class="pdc-mini-track"><div class="pdc-mini-fill" style="width:${Math.max(2, score == null ? 0 : score)}%;background:${TIER_COLOR[tierFor(score)]}"></div></div>
+      <span class="m-val">${val == null ? 'n/a' : Math.round(val) + (suffix || '')}</span>
+    </div>`;
+  document.getElementById('perf-dev-grid').innerHTML = scored.map((s, i) => `
+    <div class="perf-dev-card">
+      <div class="pdc-head">
+        ${avatarHtml(s.name, 38)}
+        <div>
+          <div class="pdc-name">${s.name}</div>
+          <div class="pdc-rank">Rank #${i + 1} of ${scored.length}</div>
+        </div>
+        <div class="pdc-score">
+          <div class="num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</div>
+          <div class="lbl">Composite</div>
+        </div>
+      </div>
+      ${miniBar('Effort', s.effortHours, 'h', s.effortScore)}
+      ${miniBar('Comp. time', s.avgCycleDays, 'd', s.cycleScore)}
+      ${miniBar('Priority', s.priorityPct, '%', s.priorityScore)}
+      ${miniBar('Severity', s.severityPct, '%', s.severityScore)}
+      ${miniBar('WIP comp.', s.wipCompletionPct, '%', s.wipScore)}
+      <div class="pdc-foot"><span>${s.n} completed</span><span>${s.wipCount} in WIP</span></div>
+    </div>`).join('');
 }
 
 let perfChart = null;
@@ -1284,17 +1426,34 @@ function renderPerfRankChart(canvasId, labels, data) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || typeof Chart === 'undefined') return;
   if (perfChart) perfChart.destroy();
-  const gradientColors = ['#8f7bf7', '#6a5ff0'];
+  const colors = data.map(v => TIER_COLOR[tierFor(v)]);
   perfChart = new Chart(canvas.getContext('2d'), {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'Composite score', data, backgroundColor: '#6a5ff0', borderRadius: 6, maxBarThickness: 28 }] },
+    data: { labels, datasets: [{ label: 'Composite score', data, backgroundColor: colors, borderRadius: 6, maxBarThickness: 26 }] },
     options: {
       indexAxis: 'y',
       plugins: { legend: { display: false } },
       scales: {
-        x: { beginAtZero: true, max: 100, grid: { color: '#2a3046' }, ticks: { color: '#9aa3bd' } },
-        y: { grid: { color: '#2a3046' }, ticks: { color: '#e4e7f2' } },
+        x: { beginAtZero: true, max: 100, grid: { color: '#262b3d' }, ticks: { color: '#9aa3bd' } },
+        y: { grid: { display: false }, ticks: { color: '#e4e7f2', font: { weight: '600' } } },
       },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+let perfDonutChart = null;
+const PERF_DONUT_PALETTE = ['#6a5ff0', '#00c2a8', '#f0b450', '#f0606e', '#3f8cf0', '#c362e8', '#43d9a3', '#e88a3a'];
+function renderPerfDonutChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (perfDonutChart) perfDonutChart.destroy();
+  perfDonutChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: PERF_DONUT_PALETTE.slice(0, Math.max(labels.length, 1)), borderColor: '#131620', borderWidth: 2 }] },
+    options: {
+      cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#cfd3e4', boxWidth: 10, padding: 10, font: { size: 11 } } } },
       maintainAspectRatio: false,
     },
   });
