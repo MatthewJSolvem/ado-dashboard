@@ -18,12 +18,22 @@
   }
   * { box-sizing: border-box; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-         margin: 0; padding: 28px; }
+         margin: 0; padding: 0 0 48px 0; }
+  .app-main { max-width: 1240px; margin: 0 auto; padding: 28px 28px 0 28px; }
+
   h1 { font-size: 23px; margin-bottom: 4px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
-  .subtitle { color: var(--muted); margin-bottom: 22px; font-size: 13.5px; max-width: 880px; line-height: 1.5; }
-  .config { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-            box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6);
-            padding: 18px 20px; margin-bottom: 22px; }
+  .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 13.5px; max-width: 880px; line-height: 1.5; }
+
+  /* ---- config panel, collapses to a slim strip once a team is loaded ---- */
+  details.config-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6); margin-bottom: 20px; overflow: hidden; }
+  details.config-panel > summary { cursor: pointer; list-style: none; padding: 14px 20px; font-weight: 800; font-size: 13px;
+            color: #fff; display: flex; align-items: center; gap: 8px; }
+  details.config-panel > summary::-webkit-details-marker { display: none; }
+  details.config-panel > summary::before { content: '▾'; color: var(--muted); font-size: 11px; transition: transform .15s; }
+  details.config-panel:not([open]) > summary::before { transform: rotate(-90deg); }
+  #config-summary-sub { color: var(--accent-2); font-weight: 700; font-size: 12.5px; }
+  .config { padding: 2px 20px 20px 20px; }
   .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
   .field { display: flex; flex-direction: column; gap: 4px; }
   label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -43,17 +53,34 @@
   details.config-details { margin-top: 14px; }
   details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent-2); font-weight: 700; }
   details.config-details .config-grid { margin-top: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+
+  /* ---- always-visible topbar: critical alert + whole-team snapshot ---- */
+  .topbar { margin-bottom: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 0; }
   .stat { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--accent);
           border-radius: 10px; padding: 14px 16px; }
   .stat.stat-bad { border-left-color: var(--bad); }
   .stat.stat-warn { border-left-color: var(--warn); }
   .stat .num { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
   .stat .label { color: var(--muted); font-size: 10.5px; margin-top: 4px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.4px; }
-  .banner { border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+  .banner { border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.6; }
   .banner-critical { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffd4d8; }
   .banner-critical h3 { margin: 0 0 8px 0; font-size: 14px; color: #fff; }
   .banner-critical ul { margin: 0; padding-left: 20px; }
+
+  /* ---- tab navigation — the primary way this page is now organized ---- */
+  .tab-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px;
+             border-bottom: 1px solid var(--border); margin-bottom: 20px; padding-top: 2px; flex-wrap: wrap; }
+  .tab-btn { background: none; border: none; box-shadow: none; color: var(--muted); font-weight: 700; font-size: 13.5px;
+             padding: 12px 16px 11px 16px; cursor: pointer; border-bottom: 3px solid transparent; border-radius: 0;
+             display: flex; align-items: center; gap: 8px; }
+  .tab-btn:hover { color: #fff; }
+  .tab-btn.active { color: #fff; border-bottom-color: var(--accent); }
+  .tab-count { background: var(--bad-bg); color: var(--bad); padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 800; }
+  .tab-count:empty { display: none; }
+  .tab-panel { animation: fadeIn .12s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
   section { background: linear-gradient(180deg,#161a28,#121521); border: 1px solid var(--border); border-radius: 14px;
             box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px -16px rgba(0,0,0,0.6);
             padding: 20px; margin-bottom: 20px; }
@@ -90,13 +117,8 @@
   .wip-bar-fill { height: 100%; background: var(--accent); }
   .wip-bar-fill.over { background: var(--bad); }
   .complexity-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-  .jump-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 20px; }
-  .jump-nav a { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
-    color: var(--accent-2); background: var(--card); border: 1px solid var(--border); border-radius: 7px;
-    padding: 6px 10px; text-decoration: none; }
-  .jump-nav a:hover { background: #1e2230; }
 
-  /* ---- shared KPI tiles (scrum pulse, overview, move suggestions) ---- */
+  /* ---- shared KPI tiles (scrum pulse) ---- */
   .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
   .kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--kpi-accent, var(--accent));
     border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
@@ -111,7 +133,6 @@
   .focus-list .fl-id { font-weight: 700; color: var(--accent-2); text-decoration: none; min-width: 42px; }
   .focus-list.blockers .fl-id { color: var(--bad); }
   .focus-list .fl-title { flex: 1; }
-  .scrum-blockers { font-size: 13px; }
 
   details.collapsible-section > summary { cursor: pointer; list-style: none; }
   details.collapsible-section > summary::-webkit-details-marker { display: none; }
@@ -122,9 +143,6 @@
   label.inline-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
     text-transform: none; font-weight: 600; cursor: pointer; }
 
-  /* ---- avatars + color-tiered chips (shared with move suggestions) ---- */
-  .avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none;
-    border-radius: 50%; color: #fff; font-size: 10.5px; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.15); }
   .metric-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
   .metric-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; }
   .metric-chip.tier-good { background: var(--good-bg); color: var(--good); }
@@ -155,197 +173,214 @@
   <h1>Dev Planner</h1>
   <div class="subtitle">Decide what goes into each sprint: a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), a suggested sprint-week allocation, and a heads-up whenever something's urgency changed enough that it should move sprints. Team-wide performance and reporting now live on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
 
-  <div class="config">
-    <div style="display:none">
-      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
-      <input type="checkbox" id="remember">
-    </div>
-    <div class="config-grid">
-      <div class="field"><label>Dev Team</label><input id="areaDev" list="ado-team-options" placeholder="e.g. Development V2 - Mark Jones Team"></div>
-      <div class="field"><label>QA Team</label><input id="areaQA" list="ado-team-options" placeholder="e.g. QA Test Team"></div>
-      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" list="ado-team-options" placeholder="e.g. Analysis Team"></div>
-      <div class="field"><label>Technical Team</label><input id="areaTechnical" list="ado-team-options" placeholder="e.g. Technical Team"></div>
-      <div class="field">
-        <label>Team to analyze</label>
-        <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
-          <option value="Dev">Dev</option>
-          <option value="QA">QA</option>
-          <option value="Analysis">Analysis</option>
-          <option value="Technical">Technical</option>
-        </select>
+  <details class="config-panel" id="config-panel" open>
+    <summary>⚙ Connection &amp; settings <span id="config-summary-sub"></span></summary>
+    <div class="config">
+      <div style="display:none">
+        <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+        <input type="checkbox" id="remember">
       </div>
-    </div>
-    <datalist id="ado-team-options"></datalist>
-
-    <div class="actions">
-      <button id="loadTeamsBtn" class="small" style="text-transform:none;background:#fff;color:var(--accent);border:1px solid var(--accent)" onclick="loadAdoTeams()">Load ADO teams (autocomplete)</button>
-      <span id="team-load-status" style="font-size:12px;color:var(--muted)"></span>
-    </div>
-
-    <div class="actions">
-      <button id="loadBtn" onclick="loadCapacity()">Analyze Team</button>
-      <button type="button" class="small" onclick="copyReport()">Copy summary report</button>
-      <span id="status"></span>
-      <span id="reviewing-team-badge" style="font-size:12px;color:var(--muted)"></span>
-      <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
-    </div>
-
-    <details class="config-details">
-      <summary>Planning options</summary>
       <div class="config-grid">
-        <div class="field"><label>Work item types to include (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
-        <div class="field"><label>Throughput lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
-        <div class="field"><label>Default weekly capacity (if no history)</label><input id="defaultCapacity" type="number" value="6" min="1"></div>
-        <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
-        <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
-        <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
-        <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
-        <div class="field"><label>Only include items created after (optional — leave blank to see everything open)</label><input id="createdAfter" type="date"></div>
-        <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
-        <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
-        <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
-        <div class="field"><label>Assumed effort — Bug (hrs, if blank in ADO)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
-        <div class="field"><label>Assumed effort — Task (hrs, if blank in ADO)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
-        <div class="field"><label>Fallback rejection rate % (used until history exists)</label><input id="reworkRejectionRatePct" type="number" value="30" min="0" max="100"></div>
-        <div class="field"><label>Avg rework effort as % of original</label><input id="reworkEffortPct" type="number" value="50" min="0" max="200"></div>
-        <div class="field"><label>Stale after (days)</label><input id="staleDays1" type="number" value="30" min="1"></div>
-        <div class="field"><label>Very stale after (days)</label><input id="staleDays2" type="number" value="90" min="1"></div>
-        <div class="field"><label>"Due soon" window (days)</label><input id="dueSoonDays" type="number" value="2" min="1"></div>
+        <div class="field"><label>Dev Team</label><input id="areaDev" list="ado-team-options" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+        <div class="field"><label>QA Team</label><input id="areaQA" list="ado-team-options" placeholder="e.g. QA Test Team"></div>
+        <div class="field"><label>Analysis Team</label><input id="areaAnalysis" list="ado-team-options" placeholder="e.g. Analysis Team"></div>
+        <div class="field"><label>Technical Team</label><input id="areaTechnical" list="ado-team-options" placeholder="e.g. Technical Team"></div>
+        <div class="field">
+          <label>Team to analyze</label>
+          <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
+            <option value="Dev">Dev</option>
+            <option value="QA">QA</option>
+            <option value="Analysis">Analysis</option>
+            <option value="Technical">Technical</option>
+          </select>
+        </div>
       </div>
-    </details>
-  </div>
+      <datalist id="ado-team-options"></datalist>
 
-  <nav class="jump-nav" id="jump-nav" style="display:none">
-    <a href="#sec-scrum">Scrum</a><a href="#sec-rebalance">Rebalance</a><a href="#sec-open">P1/P2</a><a href="#sec-weeks">Sprint planner</a>
-    <a href="#sec-capacity-card">Capacity</a><a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a>
-    <a href="#sec-carryover">Carry-over</a><a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
-  </nav>
+      <div class="actions">
+        <button id="loadTeamsBtn" class="small" style="text-transform:none;background:#fff;color:var(--accent);border:1px solid var(--accent)" onclick="loadAdoTeams()">Load ADO teams (autocomplete)</button>
+        <span id="team-load-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+
+      <div class="actions">
+        <button id="loadBtn" onclick="loadCapacity()">Analyze Team</button>
+        <button type="button" class="small" onclick="copyReport()">Copy summary report</button>
+        <span id="status"></span>
+        <span id="reviewing-team-badge" style="font-size:12px;color:var(--muted)"></span>
+        <span id="copy-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+
+      <details class="config-details">
+        <summary>Planning options</summary>
+        <div class="config-grid">
+          <div class="field"><label>Work item types to include (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
+          <div class="field"><label>Throughput lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
+          <div class="field"><label>Default weekly capacity (if no history)</label><input id="defaultCapacity" type="number" value="6" min="1"></div>
+          <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
+          <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
+          <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
+          <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
+          <div class="field"><label>Only include items created after (optional — leave blank to see everything open)</label><input id="createdAfter" type="date"></div>
+          <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
+          <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
+          <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
+          <div class="field"><label>Assumed effort — Bug (hrs, if blank in ADO)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Assumed effort — Task (hrs, if blank in ADO)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Fallback rejection rate % (used until history exists)</label><input id="reworkRejectionRatePct" type="number" value="30" min="0" max="100"></div>
+          <div class="field"><label>Avg rework effort as % of original</label><input id="reworkEffortPct" type="number" value="50" min="0" max="200"></div>
+          <div class="field"><label>Stale after (days)</label><input id="staleDays1" type="number" value="30" min="1"></div>
+          <div class="field"><label>Very stale after (days)</label><input id="staleDays2" type="number" value="90" min="1"></div>
+          <div class="field"><label>"Due soon" window (days)</label><input id="dueSoonDays" type="number" value="2" min="1"></div>
+        </div>
+      </details>
+    </div>
+  </details>
 
   <div id="error"></div>
 
-  <div id="banner-critical" class="banner banner-critical" style="display:none">
-    <h3>⚠ Critical items bypassing the capacity queue</h3>
-    <div class="meta" id="banner-critical-meta" style="margin-bottom:8px"></div>
-    <ul id="banner-critical-list"></ul>
+  <div class="topbar">
+    <div id="banner-critical" class="banner banner-critical" style="display:none">
+      <h3>⚠ Critical items bypassing the capacity queue</h3>
+      <div class="meta" id="banner-critical-meta" style="margin-bottom:8px"></div>
+      <ul id="banner-critical-list"></ul>
+    </div>
+    <div id="overview-stats" class="grid" style="display:none"></div>
   </div>
 
-  <section id="sec-scrum" style="display:none">
-    <h2>Today's scrum</h2>
-    <div class="meta">Sprint pulse, what this week is actually about, and anything blocked — the three things a stand-up needs on screen.</div>
-    <div class="kpi-row" id="scrum-pulse"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-      <div>
-        <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">This week's focus (top P1/P2, by priority)</h3>
-        <ul class="focus-list" id="scrum-focus"></ul>
-      </div>
-      <div>
-        <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">Blocked right now</h3>
-        <ul class="focus-list blockers" id="scrum-blockers"></ul>
-      </div>
-    </div>
-  </section>
+  <nav class="tab-nav" id="tab-nav" style="display:none">
+    <button type="button" class="tab-btn active" data-tab="today" onclick="showTab('today')">📅 Today <span class="tab-count" id="tab-count-today"></span></button>
+    <button type="button" class="tab-btn" data-tab="sprint" onclick="showTab('sprint')">🗓 Sprint Planner <span class="tab-count" id="tab-count-sprint"></span></button>
+    <button type="button" class="tab-btn" data-tab="workload" onclick="showTab('workload')">👤 Workload</button>
+    <button type="button" class="tab-btn" data-tab="backlog" onclick="showTab('backlog')">📦 Backlog <span class="tab-count" id="tab-count-backlog"></span></button>
+  </nav>
 
-  <section id="sec-rebalance" style="display:none">
-    <h2>Sprint rebalancing suggestions</h2>
-    <div class="meta">Items whose priority/severity now makes them urgent but aren't in the current sprint yet — with who to consider dropping from that person's current-sprint load to make room. A heads-up, not an automatic change.</div>
-    <ul class="move-list" id="move-list"></ul>
-  </section>
-
-  <section id="sec-open" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-      <h2>P1 / P2 — needs attention</h2>
-      <label class="inline-check"><input type="checkbox" id="p2AtRiskOnly" checked onchange="renderOpenTable()"> Show only at-risk P2 (hide the rest for stand-up)</label>
-    </div>
-    <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
-    </tr></thead>
-    <tbody id="rows-open-priority"></tbody></table></div>
-
-    <details style="margin-top:22px">
-      <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-        <h2 style="display:inline">Everything else — open items</h2>
-        <div class="field" style="min-width:200px;display:inline-flex">
-          <select id="openAssigneeFilter" onchange="renderOpenTable()" onclick="event.stopPropagation()"><option value="">Filter by assignee: All</option></select>
+  <!-- ============ TODAY ============ -->
+  <div class="tab-panel" id="tab-today" data-tab="today">
+    <section id="sec-scrum" style="display:none">
+      <h2>📅 Today's scrum</h2>
+      <div class="meta">Sprint pulse, what this week is actually about, and anything blocked — the three things a stand-up needs on screen.</div>
+      <div class="kpi-row" id="scrum-pulse"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">This week's focus (top P1/P2, by priority)</h3>
+          <ul class="focus-list" id="scrum-focus"></ul>
         </div>
-      </summary>
-      <div class="meta" id="meta-open" style="margin-top:12px"></div>
+        <div>
+          <h3 style="font-size:13px;margin:0 0 6px 0;color:#fff">Blocked right now</h3>
+          <ul class="focus-list blockers" id="scrum-blockers"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-rebalance" style="display:none">
+      <h2>🔁 Sprint rebalancing suggestions</h2>
+      <div class="meta">Items whose priority/severity now makes them urgent but aren't in the current sprint yet — with who to consider dropping from that person's current-sprint load to make room. A heads-up, not an automatic change.</div>
+      <ul class="move-list" id="move-list"></ul>
+    </section>
+  </div>
+
+  <!-- ============ SPRINT PLANNER ============ -->
+  <div class="tab-panel" id="tab-sprint" data-tab="sprint" style="display:none">
+    <section id="sec-open" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h2>🎯 P1 / P2 — needs attention</h2>
+        <label class="inline-check"><input type="checkbox" id="p2AtRiskOnly" checked onchange="renderOpenTable()"> Show only at-risk P2 (hide the rest for stand-up)</label>
+      </div>
+      <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
       <div class="table-wrap"><table><thead><tr>
         <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-        <th>Complexity</th><th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
+        <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
       </tr></thead>
-      <tbody id="rows-open"></tbody></table></div>
+      <tbody id="rows-open-priority"></tbody></table></div>
+
+      <details style="margin-top:22px">
+        <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+          <h2 style="display:inline">Everything else — open items</h2>
+          <div class="field" style="min-width:200px;display:inline-flex">
+            <select id="openAssigneeFilter" onchange="renderOpenTable()" onclick="event.stopPropagation()"><option value="">Filter by assignee: All</option></select>
+          </div>
+        </summary>
+        <div class="meta" id="meta-open" style="margin-top:12px"></div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+          <th>Complexity</th><th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
+        </tr></thead>
+        <tbody id="rows-open"></tbody></table></div>
+      </details>
+    </section>
+
+    <details class="collapsible-section" id="sec-weeks" style="display:none" open>
+      <summary><h2>🗓 Suggested sprint-week allocation — the sprint planner</h2></summary>
+      <div class="meta">Non-critical items are queued per person, oldest/highest-urgency first, filling each person's estimated weekly capacity before spilling into the next week. Critical items (see banner above) are always slotted into this week, on top of this queue.</div>
+      <div id="week-groups"></div>
     </details>
-  </section>
+  </div>
 
-  <div id="overview-stats" class="grid" style="display:none"></div>
+  <!-- ============ WORKLOAD ============ -->
+  <div class="tab-panel" id="tab-workload" data-tab="workload" style="display:none">
+    <details class="collapsible-section" id="sec-capacity-card" style="display:none">
+      <summary><h2>📊 Weekly capacity — worked example</h2></summary>
+      <div class="meta" id="meta-capacity-card"></div>
+      <div class="table-wrap"><table><tbody id="rows-capacity-card"></tbody></table></div>
+    </details>
 
-  <details class="collapsible-section" id="sec-capacity-card" style="display:none">
-    <summary><h2>Weekly capacity — worked example</h2></summary>
-    <div class="meta" id="meta-capacity-card"></div>
-    <div class="table-wrap"><table><tbody id="rows-capacity-card"></tbody></table></div>
-  </details>
+    <details class="collapsible-section" id="sec-devperf" style="display:none" open>
+      <summary><h2>👤 Developer weekly performance &amp; workload</h2></summary>
+      <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours). The full version of this, with charts, lives on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
+        <th>Assigned effort (h)</th><th>vs. capacity</th><th>Filling their time?</th>
+      </tr></thead>
+      <tbody id="rows-devperf"></tbody></table></div>
+    </details>
 
-  <details class="collapsible-section" id="sec-devperf" style="display:none">
-    <summary><h2>Developer weekly performance &amp; workload</h2></summary>
-    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours). The full version of this, with charts, lives on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
-      <th>Assigned effort (h)</th><th>vs. capacity</th><th>Filling their time?</th>
-    </tr></thead>
-    <tbody id="rows-devperf"></tbody></table></div>
-  </details>
+    <details class="collapsible-section" id="sec-wip" style="display:none">
+      <summary><h2>🧮 WIP per person<span class="section-count" id="count-wip"></span></h2></summary>
+      <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
+      <div id="wip-cards"></div>
+    </details>
+  </div>
 
-  <details class="collapsible-section" id="sec-wip" style="display:none">
-    <summary><h2>WIP per person<span class="section-count" id="count-wip"></span></h2></summary>
-    <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
-    <div id="wip-cards"></div>
-  </details>
+  <!-- ============ BACKLOG ============ -->
+  <div class="tab-panel" id="tab-backlog" data-tab="backlog" style="display:none">
+    <details class="collapsible-section" id="sec-carryover" style="display:none" open>
+      <summary><h2>⏪ Open items in sprints that have already ended<span class="section-count" id="count-carryover"></span></h2></summary>
+      <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished. "Slipped" is an approximate count of past sprints that have ended since the item was created — a 2nd+ slip is flagged per the Friday-review check in the planning doc.</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th><th>Slipped</th>
+      </tr></thead>
+      <tbody id="rows-carryover"></tbody></table></div>
+    </details>
 
-  <details class="collapsible-section" id="sec-pool" style="display:none">
-    <summary><h2>Unallocated Pool<span class="section-count" id="count-pool"></span></h2></summary>
-    <div class="meta" id="meta-pool">Items sitting in the "Unallocated Pool" iteration — not on anyone's schedule. Kept separate from the sprint-week queue below; sorted by how long they've been sitting there, longest first.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Complexity</th><th>Assigned To</th><th>Days in pool</th>
-    </tr></thead>
-    <tbody id="rows-pool"></tbody></table></div>
-  </details>
+    <details class="collapsible-section" id="sec-pool" style="display:none">
+      <summary><h2>🗳 Unallocated Pool<span class="section-count" id="count-pool"></span></h2></summary>
+      <div class="meta" id="meta-pool">Items sitting in the "Unallocated Pool" iteration — not on anyone's schedule. Kept separate from the sprint-week queue below; sorted by how long they've been sitting there, longest first.</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+        <th>Complexity</th><th>Assigned To</th><th>Days in pool</th>
+      </tr></thead>
+      <tbody id="rows-pool"></tbody></table></div>
+    </details>
 
-  <details class="collapsible-section" id="sec-weeks" style="display:none" open>
-    <summary><h2>Suggested sprint-week allocation — the sprint planner</h2></summary>
-    <div class="meta">Non-critical items are queued per person, oldest/highest-urgency first, filling each person's estimated weekly capacity before spilling into the next week. Critical items (see banner above) are always slotted into this week, on top of this queue.</div>
-    <div id="week-groups"></div>
-  </details>
+    <details class="collapsible-section" id="sec-unassigned" style="display:none">
+      <summary><h2>🧍 Unassigned — needs an owner<span class="section-count" id="count-unassigned"></span></h2></summary>
+      <div class="meta">Open items with nobody assigned can't be scheduled into a person's week until someone owns them.</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>Age (d)</th>
+      </tr></thead>
+      <tbody id="rows-unassigned"></tbody></table></div>
+    </details>
 
-  <details class="collapsible-section" id="sec-unassigned" style="display:none">
-    <summary><h2>Unassigned — needs an owner<span class="section-count" id="count-unassigned"></span></h2></summary>
-    <div class="meta">Open items with nobody assigned can't be scheduled into a person's week until someone owns them.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>Age (d)</th>
-    </tr></thead>
-    <tbody id="rows-unassigned"></tbody></table></div>
-  </details>
-
-  <details class="collapsible-section" id="sec-carryover" style="display:none">
-    <summary><h2>Open items in sprints that have already ended<span class="section-count" id="count-carryover"></span></h2></summary>
-    <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished. "Slipped" is an approximate count of past sprints that have ended since the item was created — a 2nd+ slip is flagged per the Friday-review check in the planning doc.</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th><th>Slipped</th>
-    </tr></thead>
-    <tbody id="rows-carryover"></tbody></table></div>
-  </details>
-
-  <details class="collapsible-section" id="sec-testrejected" style="display:none">
-    <summary><h2>Test Rejected</h2></summary>
-    <div class="meta" id="meta-testrejected"></div>
-    <div class="grid" id="testrejected-stats" style="margin-bottom:16px"></div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>Assigned To</th><th>Rejected at</th><th>Last changed</th>
-    </tr></thead>
-    <tbody id="rows-testrejected"></tbody></table></div>
-  </details>
+    <details class="collapsible-section" id="sec-testrejected" style="display:none">
+      <summary><h2>🧪 Test Rejected</h2></summary>
+      <div class="meta" id="meta-testrejected"></div>
+      <div class="grid" id="testrejected-stats" style="margin-bottom:16px"></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>ID</th><th>Title</th><th>Assigned To</th><th>Rejected at</th><th>Last changed</th>
+      </tr></thead>
+      <tbody id="rows-testrejected"></tbody></table></div>
+    </details>
+  </div>
 
 </div>
 
@@ -360,6 +395,21 @@ let priorityFieldRef = null;
 let severityFieldRef = null;
 let typeStateMapGlobal = {};
 let lastState = null; // everything the render functions need, kept for copyReport()
+
+// ---------------------------------------------------------------------
+// Tab navigation — the page's primary structure. Panels toggle their own
+// inner sections independently (unchanged render logic below); this just
+// switches which whole panel is visible.
+// ---------------------------------------------------------------------
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => { p.style.display = (p.dataset.tab === name) ? 'block' : 'none'; });
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b.dataset.tab === name); });
+  storage.set('ado-capacity-activetab', name);
+}
+(function restoreTab() {
+  const saved = storage.get('ado-capacity-activetab');
+  if (saved && document.querySelector(`.tab-panel[data-tab="${saved}"]`)) showTab(saved);
+})();
 
 // Per-team default scope — only meaningful because "who counts as this
 // team" isn't just area path; different disciplines work different types
@@ -1017,6 +1067,8 @@ async function loadCapacity() {
     setStatus('Scoring and scheduling...');
     computeAndRender();
     document.getElementById('reviewing-team-badge').textContent = `Reviewing ADO team "${teamName}" (${teamChoice})`;
+    document.getElementById('config-summary-sub').textContent = `— ${teamName} (${teamChoice})`;
+    document.getElementById('config-panel').open = false;
     setStatus('Done.');
   } catch (err) {
     if (err.message === 'CORS_OR_NETWORK') {
@@ -1045,7 +1097,7 @@ function computeAndRender() {
           devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
           reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
           testRejectedItems, testCaseWindowCount, currentIteration } = lastState;
-  document.getElementById('jump-nav').style.display = 'flex';
+  document.getElementById('tab-nav').style.display = 'flex';
   const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
 
   // Score every open item once.
@@ -1179,6 +1231,13 @@ function computeAndRender() {
   renderCarryover(carryoverItems);
   renderPool(scoredPool);
   renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, rejectionRateIsAssumed, reworkEffortPct);
+
+  // ---- tab count badges ----
+  const p1p2Count = scored.filter(isP1P2).length;
+  const backlogCount = carryoverItems.length + unallocatedPoolItems.length + unassigned.length;
+  document.getElementById('tab-count-today').textContent = criticalItems.length ? String(criticalItems.length) : '';
+  document.getElementById('tab-count-sprint').textContent = p1p2Count ? String(p1p2Count) : '';
+  document.getElementById('tab-count-backlog').textContent = backlogCount ? String(backlogCount) : '';
 }
 
 // ---------------------------------------------------------------------
