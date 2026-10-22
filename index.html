@@ -1084,7 +1084,7 @@ async function loadDashboard() {
   }
   saveSectionPrefs();
 
-  // Development's own team name, shared with Team Capacity Planner / Resource
+  // Development's own team name, shared with Dev Planner / Resource
   // Review's config (same localStorage key) so it doesn't need re-entering here.
   let devTeamName = '';
   try {
@@ -1175,7 +1175,7 @@ async function loadDashboard() {
         devLookupError = `Couldn't look up the "${devTeamName}" team — check the name matches exactly (Project Settings → Teams).`;
       }
     } else {
-      devLookupError = 'Set the Development team name in Team Capacity Planner or Resource Review to enable this card.';
+      devLookupError = 'Set the Development team name in Dev Planner or Resource Review to enable this card.';
     }
 
     const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State',

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Team Capacity Planner</title>
+<title>Dev Planner</title>
 <link rel="stylesheet" href="shell.css">
 <script src="session.js"></script>
 <script src="nav.js"></script>
@@ -95,8 +95,8 @@
 <script>ADONav.render('capacity');</script>
 <div class="app-main">
 
-  <h1>Team Capacity Planner</h1>
-  <div class="subtitle">Pick a team to see everything currently open, a suggested week for each item based on priority/severity/complexity and each person's real throughput, anything still open in sprints that have already ended, and WIP per person.</div>
+  <h1>Dev Planner</h1>
+  <div class="subtitle">Focused on the development team: weekly capacity vs. real velocity, each developer's week, a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), test rejections, and everything still open in sprints that have already ended.</div>
 
   <div class="config">
     <div style="display:none">
@@ -144,6 +144,16 @@
         <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
         <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
         <div class="field"><label>Only include items created after</label><input id="createdAfter" type="date" value="2025-11-01"></div>
+        <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
+        <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
+        <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
+        <div class="field"><label>Assumed effort — Bug (hrs, if blank in ADO)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+        <div class="field"><label>Assumed effort — Task (hrs, if blank in ADO)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+        <div class="field"><label>Fallback rejection rate % (used until history exists)</label><input id="reworkRejectionRatePct" type="number" value="30" min="0" max="100"></div>
+        <div class="field"><label>Avg rework effort as % of original</label><input id="reworkEffortPct" type="number" value="50" min="0" max="200"></div>
+        <div class="field"><label>Stale after (days)</label><input id="staleDays1" type="number" value="30" min="1"></div>
+        <div class="field"><label>Very stale after (days)</label><input id="staleDays2" type="number" value="90" min="1"></div>
+        <div class="field"><label>"Due soon" window (days)</label><input id="dueSoonDays" type="number" value="2" min="1"></div>
       </div>
     </details>
   </div>
@@ -156,6 +166,12 @@
     <ul id="banner-critical-list"></ul>
   </div>
 
+  <section id="sec-capacity-card" style="display:none">
+    <h2>Weekly capacity — worked example</h2>
+    <div class="meta" id="meta-capacity-card"></div>
+    <div class="table-wrap"><table><tbody id="rows-capacity-card"></tbody></table></div>
+  </section>
+
   <div id="overview-stats" class="grid" style="display:none"></div>
 
   <section id="sec-wip" style="display:none">
@@ -164,9 +180,26 @@
     <div id="wip-cards"></div>
   </section>
 
+  <section id="sec-devperf" style="display:none">
+    <h2>Developer weekly performance</h2>
+    <div class="meta" id="meta-devperf">Estimated items/week from historical velocity, vs. what's actually been completed and assigned this week.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
+    </tr></thead>
+    <tbody id="rows-devperf"></tbody></table></div>
+  </section>
+
   <section id="sec-open" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-      <h2>All open items</h2>
+    <h2>P1 / P2 — needs attention</h2>
+    <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
+      <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
+    </tr></thead>
+    <tbody id="rows-open-priority"></tbody></table></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:22px">
+      <h2>Everything else — open items</h2>
       <div class="field" style="min-width:200px">
         <label>Filter by assignee</label>
         <select id="openAssigneeFilter" onchange="renderOpenTable()"><option value="">All</option></select>
@@ -175,7 +208,7 @@
     <div class="meta" id="meta-open"></div>
     <div class="table-wrap"><table><thead><tr>
       <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
-      <th>Complexity</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
+      <th>Complexity</th><th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>Suggested week</th><th>In right sprint?</th>
     </tr></thead>
     <tbody id="rows-open"></tbody></table></div>
   </section>
@@ -207,11 +240,21 @@
 
   <section id="sec-carryover" style="display:none">
     <h2>Open items in sprints that have already ended</h2>
-    <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished.</div>
+    <div class="meta" id="meta-carryover">Still not Done/Closed/Removed, even though the sprint they were scheduled in has finished. "Slipped" is an approximate count of past sprints that have ended since the item was created — a 2nd+ slip is flagged per the Friday-review check in the planning doc.</div>
     <div class="table-wrap"><table><thead><tr>
-      <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th>
+      <th>ID</th><th>Title</th><th>State</th><th>Assigned To</th><th>Sprint</th><th>Sprint ended</th><th>Days overdue</th><th>Slipped</th>
     </tr></thead>
     <tbody id="rows-carryover"></tbody></table></div>
+  </section>
+
+  <section id="sec-testrejected" style="display:none">
+    <h2>Test Rejected</h2>
+    <div class="meta" id="meta-testrejected"></div>
+    <div class="grid" id="testrejected-stats" style="margin-bottom:16px"></div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>ID</th><th>Title</th><th>Assigned To</th><th>Rejected at</th><th>Last changed</th>
+    </tr></thead>
+    <tbody id="rows-testrejected"></tbody></table></div>
   </section>
 
 </div>
@@ -280,6 +323,16 @@ function applyDefaultWorkItemTypes() {
       if (o.weeksForward) document.getElementById('weeksForward').value = o.weeksForward;
       if (o.createdAfter) document.getElementById('createdAfter').value = o.createdAfter;
       if (o.workItemTypes != null) { document.getElementById('workItemTypes').value = o.workItemTypes; restoredTypes = true; }
+      if (o.devsCount) document.getElementById('devsCount').value = o.devsCount;
+      if (o.devHoursPerDay) document.getElementById('devHoursPerDay').value = o.devHoursPerDay;
+      if (o.devDaysPerWeek) document.getElementById('devDaysPerWeek').value = o.devDaysPerWeek;
+      if (o.assumedEffortBug) document.getElementById('assumedEffortBug').value = o.assumedEffortBug;
+      if (o.assumedEffortTask) document.getElementById('assumedEffortTask').value = o.assumedEffortTask;
+      if (o.reworkRejectionRatePct != null) document.getElementById('reworkRejectionRatePct').value = o.reworkRejectionRatePct;
+      if (o.reworkEffortPct != null) document.getElementById('reworkEffortPct').value = o.reworkEffortPct;
+      if (o.staleDays1) document.getElementById('staleDays1').value = o.staleDays1;
+      if (o.staleDays2) document.getElementById('staleDays2').value = o.staleDays2;
+      if (o.dueSoonDays) document.getElementById('dueSoonDays').value = o.dueSoonDays;
     } catch (e) {}
   }
   // if there's a remembered team choice but no saved type filter yet, make
@@ -547,7 +600,54 @@ function sprintStatusBadge(s) {
 
 const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
                 'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath',
-                'System.Description'];
+                'System.Description', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork',
+                'Microsoft.VSTS.Scheduling.DueDate', 'Microsoft.VSTS.Scheduling.StartDate'];
+
+// ---------------------------------------------------------------------
+// Effort — real ADO numbers when present, an *assumed* fallback (flagged
+// as such everywhere it's shown) when they're blank, per-type since Bugs
+// and Tasks often run different typical sizes.
+// ---------------------------------------------------------------------
+function effortFor(it, assumedByType) {
+  const remaining = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.RemainingWork', ''));
+  if (!isNaN(remaining) && remaining > 0) return { hours: remaining, assumed: false, source: 'Remaining Work' };
+  const original = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.OriginalEstimate', ''));
+  if (!isNaN(original) && original > 0) return { hours: original, assumed: false, source: 'Original Estimate' };
+  const wit = field(it, 'System.WorkItemType');
+  const assumed = (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4;
+  return { hours: assumed, assumed: true, source: 'assumed default' };
+}
+
+// ---------------------------------------------------------------------
+// Staleness (doc: 30-day flag, 90-day must-act) and simple date-risk
+// flags for P1/P2 items (past start-not-started / due soon / no due date).
+// ---------------------------------------------------------------------
+function stalenessBadge(age, staleDays1, staleDays2) {
+  if (age == null) return '';
+  if (age >= staleDays2) return `<span class="badge badge-bad">Very stale (${age}d)</span>`;
+  if (age >= staleDays1) return `<span class="badge badge-warn">Stale (${age}d)</span>`;
+  return '';
+}
+function computeAtRiskFlags(it, dueSoonDays, isP1P2) {
+  const flags = [];
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  const startStr = field(it, 'Microsoft.VSTS.Scheduling.StartDate', '');
+  const dueStr = field(it, 'Microsoft.VSTS.Scheduling.DueDate', '');
+  if (startStr && cat === 'Proposed' && new Date(startStr) < new Date()) {
+    flags.push('Past start date, not started');
+  }
+  if (dueStr) {
+    const daysToDue = Math.ceil((new Date(dueStr).getTime() - Date.now()) / 86400000);
+    if (daysToDue <= dueSoonDays && cat !== 'Completed') {
+      flags.push(daysToDue < 0 ? `Overdue (${Math.abs(daysToDue)}d)` : `Due in ${daysToDue}d`);
+    }
+  } else if (isP1P2) {
+    flags.push('No due date set');
+  }
+  return flags;
+}
 
 // Fetches the project's real ADO team names and offers them as autocomplete
 // suggestions on the four team fields above — the fields stay free-text
@@ -606,6 +706,16 @@ async function loadCapacity() {
   const weeksForward = Math.max(1, parseInt(document.getElementById('weeksForward').value, 10) || 8);
   const createdAfter = document.getElementById('createdAfter').value; // 'YYYY-MM-DD' or ''
   const workItemTypes = document.getElementById('workItemTypes').value.split(',').map(t => t.trim()).filter(Boolean);
+  const devsCount = Math.max(1, parseInt(document.getElementById('devsCount').value, 10) || 5);
+  const devHoursPerDay = Math.max(0.5, parseFloat(document.getElementById('devHoursPerDay').value) || 6);
+  const devDaysPerWeek = Math.max(1, parseFloat(document.getElementById('devDaysPerWeek').value) || 5);
+  const assumedEffortBug = Math.max(0.5, parseFloat(document.getElementById('assumedEffortBug').value) || 4);
+  const assumedEffortTask = Math.max(0.5, parseFloat(document.getElementById('assumedEffortTask').value) || 4);
+  const reworkRejectionRatePct = Math.max(0, parseFloat(document.getElementById('reworkRejectionRatePct').value) || 0);
+  const reworkEffortPct = Math.max(0, parseFloat(document.getElementById('reworkEffortPct').value) || 0);
+  const staleDays1 = Math.max(1, parseInt(document.getElementById('staleDays1').value, 10) || 30);
+  const staleDays2 = Math.max(1, parseInt(document.getElementById('staleDays2').value, 10) || 90);
+  const dueSoonDays = Math.max(1, parseInt(document.getElementById('dueSoonDays').value, 10) || 2);
 
   if (!org || !project || !pat || !teamName) {
     showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
@@ -618,7 +728,12 @@ async function loadCapacity() {
     storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project }));
   }
   storage.set('ado-capacity-teamchoice', teamChoice);
-  storage.set('ado-capacity-options', JSON.stringify({ lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter, workItemTypes: document.getElementById('workItemTypes').value }));
+  storage.set('ado-capacity-options', JSON.stringify({
+    lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter,
+    workItemTypes: document.getElementById('workItemTypes').value,
+    devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+    reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+  }));
 
   const btn = document.getElementById('loadBtn');
   btn.disabled = true;
@@ -696,6 +811,30 @@ async function loadCapacity() {
       return resolveCategory(typeStateMap, wit, state) === 'Completed';
     });
 
+    // ---- Test Rejected — reuses the same Testing Status / defect-leakage
+    // mechanism already on the main dashboard (QA Test Case items whose
+    // Testing Status is one of the "Test Failure - Dev/QA/UAT" values).
+    setStatus('Looking up test-rejection data...');
+    let testRejectedItems = [], testCaseWindowCount = 0, testingStatusFieldRef = null;
+    try {
+      testingStatusFieldRef = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Testing Status', 'Test Status']);
+      if (testingStatusFieldRef) {
+        const tcFields = ['System.Id', 'System.Title', 'System.ChangedDate', 'System.AssignedTo', testingStatusFieldRef];
+        const tcWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND ${areaClause}
+                  AND [System.WorkItemType] = 'QA Test Case'
+                  AND [System.ChangedDate] >= @Today - ${lookbackDays}
+                  ORDER BY [System.ChangedDate] DESC`, 'Test cases for team (rejection rate)');
+        const tcItems = await getItems(base, tcWiql.workItems.map(w => w.id), tcFields);
+        testCaseWindowCount = tcItems.length;
+        testRejectedItems = tcItems.filter(it => {
+          const status = field(it, testingStatusFieldRef, '');
+          return status.toLowerCase().startsWith('test failure');
+        }).map(it => ({ item: it, status: field(it, testingStatusFieldRef, '') }));
+      }
+    } catch (e) { /* no QA Test Case type, or field not found — card falls back to the assumed rate */ }
+
     setStatus('Looking up sprints...');
     const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
     const now = new Date();
@@ -720,7 +859,14 @@ async function loadCapacity() {
         const iterPath = field(it, 'System.IterationPath');
         const iter = iterationByPath[iterPath];
         const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
-        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null, urgency };
+        // Approximate "how many times has this slipped a sprint" — count of
+        // past (already-ended) sprints that started after this item existed.
+        // ADO has no "slip count" field, so this is a proxy, not an exact count.
+        const created = field(it, 'System.CreatedDate');
+        const sprintsSlipped = created
+          ? pastIterations.filter(pi => pi.attributes && pi.attributes.startDate && new Date(pi.attributes.startDate) >= new Date(created)).length
+          : 1;
+        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null, urgency, sprintsSlipped };
       });
     }
 
@@ -762,6 +908,9 @@ async function loadCapacity() {
     lastState = {
       teamChoice, teamName, openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks,
       defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath, createdAfter,
+      devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+      reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+      testRejectedItems, testCaseWindowCount, testingStatusFieldRef,
     };
 
     setStatus('Scoring and scheduling...');
@@ -791,7 +940,11 @@ async function loadCapacity() {
 // ---------------------------------------------------------------------
 function computeAndRender() {
   const { openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks, defaultCapacity,
-          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath } = lastState;
+          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath,
+          devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+          reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+          testRejectedItems, testCaseWindowCount } = lastState;
+  const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
 
   // Score every open item once.
   const scored = openItems.map(it => {
@@ -892,16 +1045,129 @@ function computeAndRender() {
 
   const unassigned = scored.filter(s => !s.assignee);
 
+  // Rejection rate: real data when there's enough of it, else the
+  // configured fallback (the doc's 30%/50% worked-example assumption).
+  const rejectionRatePct = testCaseWindowCount > 0
+    ? Math.round((testRejectedItems.length / testCaseWindowCount) * 1000) / 10
+    : reworkRejectionRatePct;
+  const rejectionRateIsAssumed = testCaseWindowCount === 0;
+
   renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals);
+  renderCapacityCard({ devsCount, devHoursPerDay, devDaysPerWeek, rejectionRatePct, rejectionRateIsAssumed,
+                        reworkEffortPct, completedInWindow, assumedByType, lookbackWeeks });
   renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems);
   renderWip(byPerson, wipLimit);
+  renderDevPerf(byPerson);
   renderOpenAssigneeFilter(scored);
   window._scoredOpen = scored; // used by renderOpenTable()
+  window._assumedByType = assumedByType;
+  window._dueSoonDays = dueSoonDays;
+  window._staleDays1 = staleDays1;
+  window._staleDays2 = staleDays2;
   renderOpenTable();
   renderWeekGroups(scored.filter(s => s.assignee));
   renderUnassigned(unassigned);
   renderCarryover(carryoverItems);
   renderPool(scoredPool);
+  renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, rejectionRateIsAssumed, reworkEffortPct);
+}
+
+// ---------------------------------------------------------------------
+// Capacity card — the worked-example table from the planning doc, using
+// real numbers where we have them (team size/hours from config, rework
+// allowance from real Test Rejected data once there's enough of it, avg
+// item effort from recently completed items) and clearly flagging the
+// one line that's still an assumption until more history builds up.
+// ---------------------------------------------------------------------
+function renderCapacityCard(p) {
+  const sec = document.getElementById('sec-capacity-card');
+  sec.style.display = 'block';
+  const grossWeekly = p.devsCount * p.devHoursPerDay * p.devDaysPerWeek;
+  const reworkAllowance = grossWeekly * (p.rejectionRatePct / 100) * (p.reworkEffortPct / 100);
+  const capacityForNewWork = Math.max(0, grossWeekly - reworkAllowance);
+  const effortSamples = p.completedInWindow.map(it => effortFor(it, p.assumedByType).hours);
+  const avgItemEffort = effortSamples.length
+    ? effortSamples.reduce((a, b) => a + b, 0) / effortSamples.length
+    : p.assumedByType._default;
+  const avgItemEffortIsAssumed = effortSamples.length === 0;
+  const itemsPerWeek = avgItemEffort > 0 ? capacityForNewWork / avgItemEffort : 0;
+
+  document.getElementById('meta-capacity-card').textContent =
+    `Based on ${p.devsCount} developer(s) × ${p.devHoursPerDay}h × ${p.devDaysPerWeek} day(s). ` +
+    (p.rejectionRateIsAssumed ? 'Rejection rate is an assumption (no Test Rejected history yet) — ' : 'Rejection rate from real Test Rejected data — ') +
+    `subtract days off before trusting this for a specific week.`;
+  const row = (label, value, note) => `<tr><td style="font-weight:600;width:55%">${label}</td><td>${value}${note ? ` <span class="badge badge-muted">${note}</span>` : ''}</td></tr>`;
+  document.getElementById('rows-capacity-card').innerHTML =
+    row(`${p.devsCount} developer(s) × ${p.devHoursPerDay}h × ${p.devDaysPerWeek} day(s)`, `${Math.round(grossWeekly * 10) / 10}h / week`) +
+    row(`Rework allowance (${p.rejectionRatePct}% rejection × ${p.reworkEffortPct}% rework)`, `~${Math.round(reworkAllowance * 10) / 10}h`, p.rejectionRateIsAssumed ? 'assumed' : '') +
+    row('Capacity for new work', `~${Math.round(capacityForNewWork * 10) / 10}h`) +
+    row('Average P1/P2-sized item', `${Math.round(avgItemEffort * 10) / 10}h`, avgItemEffortIsAssumed ? 'assumed' : `from last ${p.lookbackWeeks}w of completions`) +
+    row('Items per week', `~${Math.round(itemsPerWeek * 10) / 10}`);
+}
+
+// ---------------------------------------------------------------------
+// Per-developer weekly performance — estimated capability (velocity)
+// vs. this week's actual completions and remaining assigned load.
+// ---------------------------------------------------------------------
+function renderDevPerf(byPerson) {
+  const sec = document.getElementById('sec-devperf');
+  const people = Object.values(byPerson);
+  sec.style.display = people.length ? 'block' : 'none';
+  if (!people.length) return;
+  const [weekStart] = weekRange(0);
+  document.getElementById('rows-devperf').innerHTML = people.map(p => {
+    const estPerWeek = Math.round(p.throughputPerWeek * 10) / 10;
+    const completedThisWeek = p.completed.filter(c => new Date(field(c.item, 'System.ChangedDate')) >= weekStart).length;
+    const stillAssigned = p.open.length;
+    let badge;
+    if (!p.hasHistory) badge = '<span class="badge badge-muted">No history yet</span>';
+    else if (completedThisWeek >= Math.floor(estPerWeek)) badge = '<span class="badge badge-good">On pace</span>';
+    else if (completedThisWeek >= Math.floor(estPerWeek / 2)) badge = '<span class="badge badge-warn">Behind pace</span>';
+    else badge = '<span class="badge badge-bad">Well behind pace</span>';
+    return `<tr>
+      <td>${p.name}</td>
+      <td>${p.hasHistory ? estPerWeek : `${estPerWeek} (default)`}</td>
+      <td>${completedThisWeek}</td>
+      <td>${stillAssigned}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------
+// Test Rejected — same Testing Status mechanism as the main dashboard's
+// defect-leakage section, scoped to this team.
+// ---------------------------------------------------------------------
+function renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, isAssumed, reworkEffortPct) {
+  const sec = document.getElementById('sec-testrejected');
+  sec.style.display = 'block';
+  if (testCaseWindowCount === 0) {
+    document.getElementById('meta-testrejected').textContent =
+      'No "QA Test Case" items with a Testing Status field found for this team in the lookback window — nothing to measure yet.';
+    document.getElementById('testrejected-stats').innerHTML = '';
+    document.getElementById('rows-testrejected').innerHTML = '<tr><td colspan="5" class="empty">Not available</td></tr>';
+    return;
+  }
+  document.getElementById('meta-testrejected').textContent =
+    `Test cases changed in the lookback window, and which ones came back as Test Failure - Dev/QA/UAT.`;
+  document.getElementById('testrejected-stats').innerHTML = `
+    <div class="stat"><div class="num">${testCaseWindowCount}</div><div class="label">Sent to test</div></div>
+    <div class="stat ${testRejectedItems.length ? 'stat-warn' : ''}"><div class="num">${testRejectedItems.length}</div><div class="label">Rejected at least once</div></div>
+    <div class="stat"><div class="num">${rejectionRatePct}%</div><div class="label">Rejection rate${isAssumed ? ' (assumed)' : ''}</div></div>
+    <div class="stat"><div class="num">${reworkEffortPct}%</div><div class="label">Avg rework effort (assumed)</div></div>
+  `;
+  document.getElementById('rows-testrejected').innerHTML = testRejectedItems.length
+    ? testRejectedItems.map(({ item: it, status }) => {
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+          : `#${it.id}`;
+        return `<tr>
+          <td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+          <td><span class="badge badge-bad">${status}</span></td>
+          <td>${(field(it, 'System.ChangedDate') || '').slice(0, 10) || '—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="empty">No test rejections in this window</td></tr>';
 }
 
 function renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals) {
@@ -1001,13 +1267,58 @@ function renderOpenAssigneeFilter(scored) {
   if (names.includes(current)) sel.value = current;
 }
 
+function isP1P2(s) {
+  const n = parseLeadingNumber(s.urgency.priorityRaw);
+  return n != null && n <= 2;
+}
+
 function renderOpenTable() {
   const scored = window._scoredOpen || [];
+  const assumedByType = window._assumedByType || { _default: 4 };
+  const dueSoonDays = window._dueSoonDays || 2;
+  const staleDays1 = window._staleDays1 || 30;
+  const staleDays2 = window._staleDays2 || 90;
   const filter = document.getElementById('openAssigneeFilter').value;
-  const visible = filter ? scored.filter(s => (s.assignee || 'Unassigned') === filter) : scored;
   const sec = document.getElementById('sec-open');
   sec.style.display = 'block';
-  document.getElementById('meta-open').textContent = `${visible.length} of ${scored.length} open item(s) shown — not Done, Closed, or Removed.`;
+
+  // ---- P1/P2 needs-attention block (always shows everyone, ignores the
+  // assignee filter below — these take priority regardless of who's viewing) ----
+  const priorityItems = scored.filter(isP1P2);
+  document.getElementById('meta-open-priority').textContent =
+    `${priorityItems.length} P1/P2 item(s)` + (priorityItems.length ? '.' : ' — nothing at P1/P2 right now.');
+  document.getElementById('rows-open-priority').innerHTML = priorityItems.length
+    ? priorityItems.map(s => {
+        const it = s.item;
+        const idCell = workItemBaseUrl
+          ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);text-decoration:underline;font-weight:700">#${it.id}</a>`
+          : `#${it.id}`;
+        const eff = effortFor(it, assumedByType);
+        const effCell = `${eff.hours}h${eff.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}`;
+        const riskFlags = computeAtRiskFlags(it, dueSoonDays, true);
+        const riskCell = riskFlags.length
+          ? riskFlags.map(f => `<span class="badge badge-bad">${f}</span>`).join(' ')
+          : '<span class="badge badge-good">OK</span>';
+        return `<tr>
+          <td>${idCell}</td>
+          <td>${field(it, 'System.Title')}</td>
+          <td>${field(it, 'System.WorkItemType')}</td>
+          <td><span class="badge">${field(it, 'System.State')}</span></td>
+          <td>${s.urgency.priorityRaw || '—'}</td>
+          <td>${s.urgency.severityRaw || '—'}</td>
+          <td>${effCell}</td>
+          <td>${s.assignee || 'Unassigned'}</td>
+          <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
+          <td>${riskCell}</td>
+          <td>${sprintStatusBadge(s)}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="11" class="empty">Nothing at P1/P2 right now</td></tr>`;
+
+  // ---- everything else ----
+  const rest = scored.filter(s => !isP1P2(s));
+  const visible = filter ? rest.filter(s => (s.assignee || 'Unassigned') === filter) : rest;
+  document.getElementById('meta-open').textContent = `${visible.length} of ${rest.length} other open item(s) shown — not Done, Closed, or Removed (P1/P2 items are above).`;
   document.getElementById('rows-open').innerHTML = visible.length
     ? visible.map(s => {
         const it = s.item;
@@ -1015,21 +1326,25 @@ function renderOpenTable() {
           ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
           : `#${it.id}`;
         const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
+        const stale = stalenessBadge(s.age, staleDays1, staleDays2);
+        const eff = effortFor(it, assumedByType);
+        const effCell = `${eff.hours}h${eff.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}`;
         return `<tr>
           <td>${idCell}</td>
-          <td>${field(it, 'System.Title')}${critBadge}</td>
+          <td>${field(it, 'System.Title')}${critBadge} ${stale}</td>
           <td>${field(it, 'System.WorkItemType')}</td>
           <td><span class="badge">${field(it, 'System.State')}</span></td>
           <td>${s.urgency.priorityRaw || '—'}</td>
           <td>${s.urgency.severityRaw || '—'}</td>
           <td><span class="complexity-dot" style="background:${complexityColor(s.complexity.label)}"></span>${s.complexity.label} (${s.complexity.score})</td>
+          <td>${effCell}</td>
           <td>${s.assignee || 'Unassigned'}</td>
           <td class="${ageClass(s.age)}">${s.age == null ? '' : s.age}</td>
           <td>${s.assignee ? weekLabel(s.suggestedWeek) : '—'}</td>
           <td>${sprintStatusBadge(s)}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="11" class="empty">No open items for this team</td></tr>`;
+    : `<tr><td colspan="12" class="empty">No open items for this team</td></tr>`;
 }
 
 function renderPool(scoredPool) {
@@ -1135,6 +1450,9 @@ function renderCarryover(carryoverItems) {
           : `#${it.id}`;
         const overdue = c.finishDate ? daysAgo(c.finishDate) : null;
         const critBadge = c.urgency && c.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
+        const slipBadge = c.sprintsSlipped >= 2
+          ? `<span class="badge badge-bad">Slipped ${c.sprintsSlipped}x</span>`
+          : c.sprintsSlipped === 1 ? '<span class="badge badge-warn">Slipped 1x</span>' : '—';
         return `<tr>
           <td>${idCell}</td><td>${field(it, 'System.Title')}${critBadge}</td>
           <td><span class="badge">${field(it, 'System.State')}</span></td>
@@ -1142,9 +1460,10 @@ function renderCarryover(carryoverItems) {
           <td>${c.iterationName}</td>
           <td>${(c.finishDate || '').slice(0, 10) || '—'}</td>
           <td class="${ageClass(overdue)}">${overdue == null ? '—' : overdue}</td>
+          <td>${slipBadge}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="7" class="empty">Nothing carried over — every past sprint is clean</td></tr>`;
+    : `<tr><td colspan="8" class="empty">Nothing carried over — every past sprint is clean</td></tr>`;
 }
 
 // ---------------------------------------------------------------------
@@ -1169,7 +1488,7 @@ async function copyReport() {
   const wrongSprint = scored.filter(s => s._sprintStatus && s._sprintStatus.status === 'wrong');
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  let text = `TEAM CAPACITY REPORT — ${lastState.teamChoice} — ${dateStr}\n`;
+  let text = `DEV PLANNER REPORT — ${lastState.teamChoice} — ${dateStr}\n`;
   if (lastState.createdAfter) text += `(items created after ${lastState.createdAfter} only)\n`;
   text += `\nOpen items: ${scored.length}\n`;
   text += `Critical (bypassing queue): ${criticals.length}\n`;
@@ -1193,6 +1512,11 @@ async function copyReport() {
       const d = daysAgo(p.since);
       text += `  #${p.item.id} ${field(p.item, 'System.Title')} — sitting ${d == null ? '?' : d}d${p.approx ? ' (approx)' : ''}\n`;
     });
+
+  if (lastState.testCaseWindowCount) {
+    const rate = Math.round((lastState.testRejectedItems.length / lastState.testCaseWindowCount) * 1000) / 10;
+    text += `\nTest Rejected: ${lastState.testRejectedItems.length} of ${lastState.testCaseWindowCount} test cases (${rate}%) in the last ${lastState.lookbackWeeks}w\n`;
+  }
 
   try {
     await navigator.clipboard.writeText(text);
