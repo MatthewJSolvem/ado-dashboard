@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dev Insight</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0c13; --card: #141825; --card2: #10131e; --border: #262b3d; --text: #e7e9f2;
+    --muted: #8b93ad; --accent: #6a5ff0; --accent-2: #8f7bf7;
+    --good: #43d9a3; --good-bg: rgba(67,217,163,0.12);
+    --warn: #f0b450; --warn-bg: rgba(240,180,80,0.12);
+    --bad: #f0606e; --bad-bg: rgba(240,96,110,0.12);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+         margin: 0; padding: 28px; }
+  h1 { font-size: 23px; margin-bottom: 4px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
+  .subtitle { color: var(--muted); margin-bottom: 22px; font-size: 13.5px; max-width: 880px; line-height: 1.5; }
+
+  /* ---- config panel ---- */
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6);
+            padding: 18px 20px; margin-bottom: 22px; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  input, select, textarea { background: #0e111a; border: 1px solid var(--border); border-radius: 6px;
+         color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  button { background: linear-gradient(145deg,var(--accent-2),var(--accent)); color: white; border: none; border-radius: 7px;
+           padding: 10px 18px; font-size: 13px; font-weight: 700; letter-spacing: 0.2px;
+           cursor: pointer; box-shadow: 0 4px 14px -6px rgba(106,95,240,0.7); }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: none; border: 1px solid var(--border); color: var(--muted); box-shadow: none; }
+  button.small { padding: 7px 10px; font-size: 12px; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffb3ba; border-radius: 8px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  details.config-details { margin-top: 12px; }
+  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent-2); font-weight: 700; }
+  details.config-details .config-grid { margin-top: 12px; }
+
+  /* ---- shared card shell used by every report section ---- */
+  .card { background: linear-gradient(180deg,#161a28,#121521); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px -16px rgba(0,0,0,0.6); }
+  .card-title { color: #fff; font-size: 13px; font-weight: 800; margin: 0 0 4px 0; display: flex; align-items: center; gap: 7px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  .card-title .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); flex: none; }
+  .card-sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; line-height: 1.5; max-width: 820px; }
+  .chart-wrap { height: 300px; }
+  .chart-wrap.small { height: 230px; }
+  .chart-wrap.tiny { height: 190px; }
+
+  /* ---- KPI tiles (reused across sections) ---- */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--kpi-accent, var(--accent));
+    border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+  .kpi-tile .kpi-label { color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .kpi-tile .kpi-value { color: #fff; font-size: 25px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .kpi-tile .kpi-sub { color: #6b7490; font-size: 11px; margin-top: 5px; }
+  .kpi-tile .kpi-icon { position: absolute; right: 12px; top: 12px; font-size: 19px; opacity: 0.35; }
+
+  /* ---- two/three column report rows ---- */
+  .row-2 { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+  .row-2-even { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .row-2, .row-2-even { grid-template-columns: 1fr; } }
+
+  /* ---- scrum focus / blocker lists ---- */
+  .focus-list { list-style: none; margin: 0; padding: 0; }
+  .focus-list li { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #1e2230; font-size: 13px; }
+  .focus-list li:last-child { border-bottom: none; }
+  .focus-list .fl-id { font-weight: 700; color: var(--accent-2); text-decoration: none; min-width: 42px; }
+  .focus-list.blockers .fl-id { color: var(--bad); }
+  .focus-list .fl-title { flex: 1; color: var(--text); }
+  .focus-list .chip { background: #1e2230; color: var(--muted); padding: 2px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+  .empty-row { color: var(--muted); text-align: center; padding: 18px 0; font-size: 13px; }
+
+  /* ---- badges (kept for compatibility with shared helpers) ---- */
+  .badge { background: #1e2230; color: var(--accent-2); padding: 2px 8px; border-radius: 10px;
+           font-size: 10.5px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge-muted { background: #1e2230; color: var(--muted); }
+
+  /* ---- capacity / filling-hours bars ---- */
+  .cap-grid { display: grid; gap: 14px; }
+  .cap-row { display: grid; grid-template-columns: 170px 1fr 150px 110px; align-items: center; gap: 14px; }
+  @media (max-width: 760px) { .cap-row { grid-template-columns: 130px 1fr; grid-template-areas: "a a" "b c" "d d"; } }
+  .cap-person { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 13px; }
+  .cap-track { background: #1e2230; border-radius: 5px; height: 14px; overflow: hidden; position: relative; }
+  .cap-fill { height: 100%; border-radius: 5px 0 0 5px; transition: width .2s; }
+  .cap-marker { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #e4e7f2; opacity: 0.6; }
+  .cap-hours { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .cap-hours strong { color: #fff; }
+
+  /* ---- rank table (ranking / leaderboard) ---- */
+  .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rank-table th { text-align: left; color: #74799a; font-weight: 700; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.4px; padding: 0 10px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .rank-table td { padding: 11px 10px; border-bottom: 1px solid #1e2230; vertical-align: middle; }
+  .rank-table tr:last-child td { border-bottom: none; }
+  .rank-table tr:hover td { background: #191d2c; }
+  .rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    border-radius: 50%; background: #262b3d; color: #e4e7f0; font-weight: 800; font-size: 12px; flex: none; }
+  .rank-badge.gold { background: linear-gradient(145deg,#f0d060,#caa23a); color: #1a1e2c; box-shadow: 0 0 10px rgba(202,162,58,0.5); }
+  .rank-badge.silver { background: linear-gradient(145deg,#d6dbea,#a3abc2); color: #1a1e2c; box-shadow: 0 0 10px rgba(163,171,194,0.35); }
+  .rank-badge.bronze { background: linear-gradient(145deg,#d3925a,#b5743a); color: #1a1e2c; box-shadow: 0 0 10px rgba(181,116,58,0.35); }
+  .name-cell { display: flex; align-items: center; gap: 10px; }
+  .avatar { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none;
+    border-radius: 50%; color: #fff; font-size: 11.5px; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.15); }
+  .composite-cell { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+  .composite-num { font-size: 16px; font-weight: 800; min-width: 30px; }
+  .score-bar-track { background: #1e2230; border-radius: 3px; height: 7px; width: 70px; overflow: hidden; flex: none; }
+  .score-bar-fill { height: 100%; border-radius: 3px; }
+
+  /* ---- color-tiered chips + mini bars (used in table cells and dev cards) ---- */
+  .metric-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .metric-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .metric-chip.tier-good { background: var(--good-bg); color: var(--good); }
+  .metric-chip.tier-good .chip-dot { background: var(--good); }
+  .metric-chip.tier-warn { background: var(--warn-bg); color: var(--warn); }
+  .metric-chip.tier-warn .chip-dot { background: var(--warn); }
+  .metric-chip.tier-bad { background: var(--bad-bg); color: var(--bad); }
+  .metric-chip.tier-bad .chip-dot { background: var(--bad); }
+  .metric-chip.tier-na { background: rgba(139,147,173,0.1); color: var(--muted); }
+  .metric-chip.tier-na .chip-dot { background: var(--muted); }
+
+  /* ---- per-developer breakdown cards ---- */
+  .dev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .dev-card { background: linear-gradient(180deg,#161a28,#131620); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .dev-card .pdc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .dev-card .pdc-head .avatar { width: 38px; height: 38px; font-size: 14px; }
+  .dev-card .pdc-name { font-weight: 700; color: #fff; font-size: 14px; }
+  .dev-card .pdc-rank { color: #74799a; font-size: 11px; }
+  .dev-card .pdc-score { margin-left: auto; text-align: right; }
+  .dev-card .pdc-score .num { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .dev-card .pdc-score .lbl { color: #6b7490; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .pdc-metric-row { display: grid; grid-template-columns: 76px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 11.5px; }
+  .pdc-metric-row .m-label { color: var(--muted); font-weight: 600; }
+  .pdc-metric-row .m-val { color: #cfd3e4; font-weight: 700; text-align: right; }
+  .pdc-mini-track { background: #1e2230; border-radius: 3px; height: 6px; overflow: hidden; }
+  .pdc-mini-fill { height: 100%; border-radius: 3px; }
+  .dev-card .pdc-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid #1e2230; color: #6b7490; font-size: 11px; display: flex; justify-content: space-between; }
+
+  /* ---- activity timeline ---- */
+  .timeline { position: relative; margin-left: 6px; }
+  .timeline::before { content: ''; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
+  .tl-item { position: relative; padding: 0 0 16px 28px; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-dot { position: absolute; left: 0; top: 2px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 2px var(--border); }
+  .tl-time { color: #6b7490; font-size: 11px; margin-bottom: 2px; }
+  .tl-body { font-size: 13px; color: var(--text); }
+  .tl-body .fl-id { color: var(--accent-2); font-weight: 700; text-decoration: none; margin-right: 4px; }
+  .tl-who { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+
+  .meta-note { color: #6b7490; font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<script>ADONav.render('insight');</script>
+<div class="app-main">
+
+  <h1>Dev Insight</h1>
+  <div class="subtitle">A single stand-up-ready view of the dev team: today's sprint objective and P1/P2 focus, a sprint burndown read, who's filling their hours, team performance ranking, and what's actually moved recently in ADO.</div>
+
+  <div class="config">
+    <div style="display:none">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
+    </div>
+    <div class="config-grid">
+      <div class="field"><label>Dev Team</label><input id="areaDev" list="ado-team-options" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+      <div class="field"><label>QA Team</label><input id="areaQA" list="ado-team-options" placeholder="e.g. QA Test Team"></div>
+      <div class="field"><label>Analysis Team</label><input id="areaAnalysis" list="ado-team-options" placeholder="e.g. Analysis Team"></div>
+      <div class="field"><label>Technical Team</label><input id="areaTechnical" list="ado-team-options" placeholder="e.g. Technical Team"></div>
+      <div class="field">
+        <label>Team to analyze</label>
+        <select id="teamChoice" onchange="applyDefaultWorkItemTypes()">
+          <option value="Dev">Dev</option>
+          <option value="QA">QA</option>
+          <option value="Analysis">Analysis</option>
+          <option value="Technical">Technical</option>
+        </select>
+      </div>
+    </div>
+    <datalist id="ado-team-options"></datalist>
+
+    <div class="actions">
+      <button id="loadTeamsBtn" class="small ghost" onclick="loadAdoTeams()">Load ADO teams (autocomplete)</button>
+      <span id="team-load-status" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+
+    <div class="actions">
+      <button id="loadBtn" onclick="loadCapacity()">Analyze Team</button>
+      <span id="status"></span>
+      <span id="reviewing-team-badge" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+
+    <details class="config-details">
+      <summary>Planning options</summary>
+      <div class="config-grid">
+        <div class="field"><label>Work item types to include (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
+        <div class="field"><label>Throughput lookback (weeks)</label><input id="lookbackWeeks" type="number" value="8" min="2" max="26"></div>
+        <div class="field"><label>Default weekly capacity (if no history)</label><input id="defaultCapacity" type="number" value="6" min="1"></div>
+        <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
+        <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
+        <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
+        <div class="field"><label>Weeks to project forward</label><input id="weeksForward" type="number" value="8" min="1" max="26"></div>
+        <div class="field"><label>Only include items created after (optional — leave blank to see everything open)</label><input id="createdAfter" type="date"></div>
+        <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
+        <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
+        <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
+        <div class="field"><label>Assumed effort — Bug (hrs, if blank in ADO)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+        <div class="field"><label>Assumed effort — Task (hrs, if blank in ADO)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+        <div class="field"><label>Fallback rejection rate % (used until history exists)</label><input id="reworkRejectionRatePct" type="number" value="30" min="0" max="100"></div>
+        <div class="field"><label>Avg rework effort as % of original</label><input id="reworkEffortPct" type="number" value="50" min="0" max="200"></div>
+        <div class="field"><label>Stale after (days)</label><input id="staleDays1" type="number" value="30" min="1"></div>
+        <div class="field"><label>Very stale after (days)</label><input id="staleDays2" type="number" value="90" min="1"></div>
+        <div class="field"><label>"Due soon" window (days)</label><input id="dueSoonDays" type="number" value="2" min="1"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="error"></div>
+
+  <!-- ===================== Today's scrum ===================== -->
+  <div id="sec-scrum" class="card" style="display:none">
+    <div class="card-title"><span class="dot"></span>Today's scrum objective</div>
+    <div class="card-sub">Sprint pulse, this week's P1/P2 focus, and anything blocked right now — the three things a stand-up needs on screen, nothing else.</div>
+    <div class="kpi-row" id="scrum-pulse"></div>
+    <div class="row-2-even">
+      <div>
+        <h3 style="font-size:12.5px;margin:0 0 8px 0;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">This week's focus — top P1/P2</h3>
+        <ul class="focus-list" id="scrum-focus"></ul>
+      </div>
+      <div>
+        <h3 style="font-size:12.5px;margin:0 0 8px 0;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Blocked right now</h3>
+        <ul class="focus-list blockers" id="scrum-blockers"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Burndown + priority mix ===================== -->
+  <div class="row-2">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#00c2a8;box-shadow:0 0 8px #00c2a8"></span>Sprint burndown</div>
+      <div class="card-sub" id="burndown-sub">Ideal pace for the current sprint against today's actual remaining effort.</div>
+      <div class="chart-wrap"><canvas id="chart-burndown"></canvas></div>
+      <div class="meta-note">ADO doesn't keep daily history here, so this plots the ideal trend line against a single "today" marker for actual remaining effort — not a full day-by-day historical burndown.</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#f0b450;box-shadow:0 0 8px #f0b450"></span>Open items by priority</div>
+      <div class="card-sub">Every open Bug/Task in scope, split by priority value.</div>
+      <div class="chart-wrap small"><canvas id="chart-priority-donut"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===================== Capacity / filling hours ===================== -->
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:#3f8cf0;box-shadow:0 0 8px #3f8cf0"></span>Capacity — who's filling their hours</div>
+    <div class="card-sub">Assigned-effort hours (real where ADO has it, assumed where blank) against each developer's configured productive hours. This is workload assigned, not literal logged time — ADO has no time clock here.</div>
+    <div class="cap-grid" id="cap-bars"></div>
+  </div>
+
+  <!-- ===================== Team performance ===================== -->
+  <div id="perf-empty" class="card"><div class="empty-row">Click "Analyze Team" above to load data — this section ranks developers from the same load, so there's nothing to show until then.</div></div>
+  <div id="perf-content" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#8f7bf7;box-shadow:0 0 8px #8f7bf7"></span>Team performance ranking</div>
+      <div class="card-sub">Composite score over the last <span id="perf-lookback-weeks"></span> week(s), equal-weighted across 5 metrics: effort delivered, completion time, priority handling, severity handling, and WIP completion rate. Each metric is scaled 0–100 relative to this team, then averaged — not a judgment of who's "best," just one read on the data ADO has.</div>
+      <div class="kpi-row" id="perf-kpi-row"></div>
+      <div class="row-2">
+        <div>
+          <div class="card-title" style="font-size:11px"><span class="dot"></span>Composite ranking</div>
+          <div class="chart-wrap small"><canvas id="chart-perf-rank"></canvas></div>
+        </div>
+        <div>
+          <div class="card-title" style="font-size:11px"><span class="dot" style="background:#00c2a8;box-shadow:0 0 8px #00c2a8"></span>Completions by developer</div>
+          <div class="chart-wrap small"><canvas id="chart-perf-donut"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#f0b450;box-shadow:0 0 8px #f0b450"></span>Metric breakdown per developer</div>
+      <div class="dev-grid" id="perf-dev-grid"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:#f0606e;box-shadow:0 0 8px #f0606e"></span>Full leaderboard</div>
+      <div class="table-wrap"><table class="rank-table"><thead><tr>
+        <th>Rank</th><th>Developer</th><th>Composite</th><th>Effort delivered</th><th>Completion time</th>
+        <th>Priority handling</th><th>Severity handling</th><th>WIP completion</th><th>Completions</th>
+      </tr></thead>
+      <tbody id="rows-perf-rank"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ===================== Recent activity ===================== -->
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:#c362e8;box-shadow:0 0 8px #c362e8"></span>Recent activity</div>
+    <div class="card-sub">Most recently changed open items and completions in this team's scope, newest first.</div>
+    <div class="timeline" id="activity-timeline"></div>
+  </div>
+
+</div>
+
+<script>
+
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+let workItemBaseUrl = '';
+let priorityFieldRef = null;
+let severityFieldRef = null;
+let typeStateMapGlobal = {};
+let lastState = null; // everything the render functions need
+
+// Per-team default scope — only meaningful because "who counts as this
+// team" isn't just area path; different disciplines work different types
+// (devs: Bug/Task, QA: Bug/Test Case, etc). Only auto-fills when the field
+// still matches a previous default, so a manual edit isn't clobbered.
+const DEFAULT_TYPES_BY_TEAM = { Dev: 'Bug, Task', QA: 'Bug, Test Case', Analysis: '', Technical: '' };
+function applyDefaultWorkItemTypes() {
+  const el = document.getElementById('workItemTypes');
+  const allDefaults = Object.values(DEFAULT_TYPES_BY_TEAM);
+  if (!el.value.trim() || allDefaults.includes(el.value.trim())) {
+    el.value = DEFAULT_TYPES_BY_TEAM[document.getElementById('teamChoice').value] || '';
+  }
+}
+
+// ---- restore shared config ----
+(function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw);
+      document.getElementById('org').value = cfg.org || '';
+      document.getElementById('project').value = cfg.project || '';
+      document.getElementById('team').value = cfg.team || '';
+      if (cfg.org || cfg.project || cfg.team) document.getElementById('remember').checked = true;
+    } catch (e) {}
+  }
+  // reuse team names saved by the old weekly report page, if present, so
+  // nothing needs re-typing after that page was replaced by this one
+  const raw2 = storage.get('ado-capacity-teamnames') || storage.get('ado-team-report-teamnames');
+  if (raw2) {
+    try {
+      const a = JSON.parse(raw2);
+      document.getElementById('areaDev').value = a.dev || '';
+      document.getElementById('areaQA').value = a.qa || '';
+      document.getElementById('areaAnalysis').value = a.analysis || '';
+      document.getElementById('areaTechnical').value = a.technical || '';
+    } catch (e) {}
+  }
+  const savedChoice = storage.get('ado-capacity-teamchoice');
+  if (savedChoice) document.getElementById('teamChoice').value = savedChoice;
+  const savedOptions = storage.get('ado-capacity-options');
+  let restoredTypes = false;
+  if (savedOptions) {
+    try {
+      const o = JSON.parse(savedOptions);
+      if (o.lookbackWeeks) document.getElementById('lookbackWeeks').value = o.lookbackWeeks;
+      if (o.defaultCapacity) document.getElementById('defaultCapacity').value = o.defaultCapacity;
+      if (o.wipLimit) document.getElementById('wipLimit').value = o.wipLimit;
+      if (o.criticalPriority) document.getElementById('criticalPriority').value = o.criticalPriority;
+      if (o.criticalSeverityKeyword) document.getElementById('criticalSeverityKeyword').value = o.criticalSeverityKeyword;
+      if (o.weeksForward) document.getElementById('weeksForward').value = o.weeksForward;
+      if (o.createdAfter) document.getElementById('createdAfter').value = o.createdAfter;
+      if (o.workItemTypes != null) { document.getElementById('workItemTypes').value = o.workItemTypes; restoredTypes = true; }
+      if (o.devsCount) document.getElementById('devsCount').value = o.devsCount;
+      if (o.devHoursPerDay) document.getElementById('devHoursPerDay').value = o.devHoursPerDay;
+      if (o.devDaysPerWeek) document.getElementById('devDaysPerWeek').value = o.devDaysPerWeek;
+      if (o.assumedEffortBug) document.getElementById('assumedEffortBug').value = o.assumedEffortBug;
+      if (o.assumedEffortTask) document.getElementById('assumedEffortTask').value = o.assumedEffortTask;
+      if (o.reworkRejectionRatePct != null) document.getElementById('reworkRejectionRatePct').value = o.reworkRejectionRatePct;
+      if (o.reworkEffortPct != null) document.getElementById('reworkEffortPct').value = o.reworkEffortPct;
+      if (o.staleDays1) document.getElementById('staleDays1').value = o.staleDays1;
+      if (o.staleDays2) document.getElementById('staleDays2').value = o.staleDays2;
+      if (o.dueSoonDays) document.getElementById('dueSoonDays').value = o.dueSoonDays;
+    } catch (e) {}
+  }
+  // if there's a remembered team choice but no saved type filter yet, make
+  // sure the type field actually matches that team's default (not Dev's)
+  if (savedChoice && !restoredTypes) applyDefaultWorkItemTypes();
+})();
+
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+})();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); }
+  catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); }
+  catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+function field(item, name, def = '') {
+  if (!name) return def;
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+function ageClass(days) {
+  if (days == null) return '';
+  if (days < 7) return 'age-green';
+  if (days <= 21) return 'age-amber';
+  return 'age-red';
+}
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+async function discoverFieldReferenceName(projectBase, workItemType, displayNameCandidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = displayNameCandidates.map(c => c.toLowerCase());
+    const match = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return match ? match.referenceName : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Same literal-state belt-and-suspenders approach used on the other pages in
+// this console, since ADO's own state-category metadata has been wrong
+// before for this org (e.g. Bug's "Closed" state wasn't tagged Completed).
+const LITERAL_COMPLETED_STATES = ['closed', 'done'];
+const LITERAL_REMOVED_STATES = ['removed'];
+function resolveCategory(typeStateMap, wit, state) {
+  const sLower = (state || '').toLowerCase();
+  if (LITERAL_COMPLETED_STATES.includes(sLower)) return 'Completed';
+  if (LITERAL_REMOVED_STATES.includes(sLower)) return 'Removed';
+  return (typeStateMap[wit] || {})[state] || '';
+}
+function isOpenItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  return cat !== 'Completed' && cat !== 'Removed';
+}
+function isInProgressItem(it) {
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  return cat === 'InProgress';
+}
+function buildAreaClause(teamFieldValues) {
+  if (!teamFieldValues || !teamFieldValues.values || !teamFieldValues.values.length) return null;
+  const parts = teamFieldValues.values.map(v => {
+    const esc = v.value.replace(/'/g, "''");
+    return v.includeChildren ? `[System.AreaPath] UNDER '${esc}'` : `[System.AreaPath] = '${esc}'`;
+  });
+  return `(${parts.join(' OR ')})`;
+}
+
+// ---------------------------------------------------------------------
+// Complexity heuristic — no story-points-style field exists on this
+// project, so this reads the title, description, and (if present) a
+// client field, and scores complexity from keyword patterns + length.
+// This is a heuristic estimate, not a guarantee — shown with its reasons
+// so it can be sanity-checked at a glance.
+// ---------------------------------------------------------------------
+const HIGH_COMPLEXITY_KEYWORDS = [
+  'migration', 'migrate', 'integration', 'integrate', 'multiple systems', 'cross-team', 'cross team',
+  'architecture', 'refactor', 'legacy', 'redesign', 'rewrite', 'breaking change', 'root cause',
+  'investigate', 'investigation', 'unclear', 'tbd', 'to be confirmed', 'several teams', 'many systems',
+  'complex', 'scalability', 'security', 'data loss', 'corruption', 'dependency', 'dependencies',
+  'cross-browser', 'multiple environments', 'end-to-end', 'end to end', 'race condition', 'concurrency',
+  'performance issue', 'multiple modules', 'third-party', 'third party', 'backwards compatib',
+];
+const LOW_COMPLEXITY_KEYWORDS = [
+  'typo', 'label change', 'text change', 'copy update', 'wording', 'cosmetic', 'one-line', 'one line',
+  'css tweak', 'rename', 'small fix', 'minor', 'simple', 'quick fix', 'straightforward', 'color change',
+  'spelling', 'align', 'spacing',
+];
+function computeComplexity(title, description, client) {
+  const desc = stripHtml(description);
+  const text = `${title || ''} ${desc} ${client || ''}`.toLowerCase();
+  let highHits = 0, lowHits = 0;
+  const reasons = [];
+  HIGH_COMPLEXITY_KEYWORDS.forEach(k => { if (text.includes(k)) { highHits++; reasons.push(`+ "${k}"`); } });
+  LOW_COMPLEXITY_KEYWORDS.forEach(k => { if (text.includes(k)) { lowHits++; reasons.push(`- "${k}"`); } });
+  const lengthScore = Math.min(3, desc.length / 400);
+  let score = 1 + lengthScore + (highHits * 2) - (lowHits * 1.5);
+  const thin = desc.length < 20;
+  if (thin) reasons.push('description too thin to assess confidently');
+  score = Math.max(0.5, Math.min(10, score));
+  const label = score <= 3 ? 'Low' : score <= 6 ? 'Medium' : 'High';
+  return { score: Math.round(score * 10) / 10, label, reasons, thin };
+}
+function complexityColor(label) {
+  return label === 'High' ? 'var(--bad)' : label === 'Medium' ? 'var(--warn)' : 'var(--good)';
+}
+
+// ---------------------------------------------------------------------
+// Urgency (priority + severity) — also drives the critical override.
+// ---------------------------------------------------------------------
+function parseLeadingNumber(str) {
+  const m = String(str || '').match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function classifyUrgency(it, criticalPriority, criticalSeverityKeyword) {
+  const priorityRaw = field(it, priorityFieldRef, '');
+  const severityRaw = field(it, severityFieldRef, '');
+  const priorityNum = parseLeadingNumber(priorityRaw);
+  const severityNum = parseLeadingNumber(severityRaw);
+  const priorityWeight = priorityNum != null ? Math.max(0, 5 - priorityNum) : 2;
+  const severityWeight = severityNum != null ? Math.max(0, 5 - severityNum) : 2;
+  const severityIsCriticalWord = criticalSeverityKeyword &&
+    String(severityRaw).toLowerCase().includes(criticalSeverityKeyword.toLowerCase());
+  const priorityIsCritical = priorityNum != null && priorityNum <= criticalPriority;
+  const critical = priorityIsCritical || severityIsCriticalWord;
+  const urgencyScore = priorityWeight * 2 + severityWeight * 1.5;
+  return { priorityRaw, severityRaw, priorityWeight, severityWeight, urgencyScore, critical };
+}
+
+// Criticals first, always — used to order every table/list on the page so
+// "deal with criticals first" holds everywhere, not just in scheduling.
+function sortCriticalFirst(list, secondary) {
+  return list.sort((a, b) => {
+    const aCrit = a.urgency.critical ? 1 : 0;
+    const bCrit = b.urgency.critical ? 1 : 0;
+    if (aCrit !== bCrit) return bCrit - aCrit;
+    if (secondary) return secondary(a, b);
+    if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
+    return (b.age || 0) - (a.age || 0);
+  });
+}
+
+function weekMonday(idx) {
+  const now = new Date();
+  const daysSinceMonday = (now.getDay() + 6) % 7;
+  const mondayThisWeek = new Date(now.getTime() - daysSinceMonday * 86400000);
+  return new Date(mondayThisWeek.getTime() + idx * 7 * 86400000);
+}
+// Heading date is the Saturday of that calendar week (Monday + 5 days) —
+// the week's actual Mon–Sun boundaries (weekMonday/weekRange) are unchanged
+// and still drive scheduling and the sprint-overlap check; only the date
+// shown in the heading text changes.
+function weekSaturday(idx) {
+  return new Date(weekMonday(idx).getTime() + 5 * 86400000);
+}
+function weekLabel(idx) {
+  const dateStr = weekSaturday(idx).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+  if (idx === 0) return `This week (${dateStr})`;
+  if (idx === 1) return `Next week (${dateStr})`;
+  return `Week of ${dateStr}`;
+}
+// [start, end) of the calendar week a suggested-week index refers to, for
+// checking whether an item's *actual* current iteration overlaps it.
+function weekRange(idx) {
+  const start = weekMonday(idx);
+  const end = new Date(start.getTime() + 7 * 86400000);
+  return [start, end];
+}
+
+// Runs async worker(item) over items with at most `limit` in flight at once.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+function isUnallocatedPoolPath(path) {
+  return !!path && path.toLowerCase().includes('unallocated pool');
+}
+
+// Compares an item's *actual* current iteration against a suggested-week
+// index. Returns one of: 'right' | 'wrong' | 'unscheduled' | 'pool' | null
+// (null = no suggested week to compare against, e.g. unassigned items).
+function sprintStatus(s, iterationByPath) {
+  if (s.suggestedWeek == null) return null;
+  const path = field(s.item, 'System.IterationPath');
+  if (isUnallocatedPoolPath(path)) return { status: 'pool' };
+  const iter = iterationByPath[path];
+  if (!iter || !iter.attributes || !iter.attributes.startDate || !iter.attributes.finishDate) {
+    return { status: 'unscheduled' };
+  }
+  const [weekStart, weekEnd] = weekRange(s.suggestedWeek);
+  const iterStart = new Date(iter.attributes.startDate);
+  const iterEnd = new Date(iter.attributes.finishDate);
+  const overlaps = iterStart < weekEnd && iterEnd >= weekStart;
+  return { status: overlaps ? 'right' : 'wrong', currentName: iter.name };
+}
+function sprintStatusBadge(s) {
+  const r = s._sprintStatus;
+  if (!r) return '<span class="badge badge-muted">—</span>';
+  if (r.status === 'right') return '<span class="badge badge-good">Right sprint</span>';
+  if (r.status === 'wrong') return `<span class="badge badge-bad">Wrong sprint (in ${r.currentName})</span>`;
+  if (r.status === 'unscheduled') return '<span class="badge badge-warn">Not yet scheduled</span>';
+  if (r.status === 'pool') return '<span class="badge badge-warn">Unallocated Pool</span>';
+  return '<span class="badge badge-muted">—</span>';
+}
+
+const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
+                'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath',
+                'System.Description', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork',
+                'Microsoft.VSTS.Scheduling.DueDate', 'Microsoft.VSTS.Scheduling.StartDate'];
+
+// ---------------------------------------------------------------------
+// Effort — real ADO numbers when present, an *assumed* fallback (flagged
+// as such everywhere it's shown) when they're blank, per-type since Bugs
+// and Tasks often run different typical sizes.
+// ---------------------------------------------------------------------
+function effortFor(it, assumedByType) {
+  const remaining = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.RemainingWork', ''));
+  if (!isNaN(remaining) && remaining > 0) return { hours: remaining, assumed: false, source: 'Remaining Work' };
+  const original = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.OriginalEstimate', ''));
+  if (!isNaN(original) && original > 0) return { hours: original, assumed: false, source: 'Original Estimate' };
+  const wit = field(it, 'System.WorkItemType');
+  const assumed = (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4;
+  return { hours: assumed, assumed: true, source: 'assumed default' };
+}
+
+// ---------------------------------------------------------------------
+// Staleness (doc: 30-day flag, 90-day must-act) and simple date-risk
+// flags for P1/P2 items (past start-not-started / due soon / no due date).
+// ---------------------------------------------------------------------
+function stalenessBadge(age, staleDays1, staleDays2) {
+  if (age == null) return '';
+  if (age >= staleDays2) return `<span class="badge badge-bad">Very stale (${age}d)</span>`;
+  if (age >= staleDays1) return `<span class="badge badge-warn">Stale (${age}d)</span>`;
+  return '';
+}
+function computeAtRiskFlags(it, dueSoonDays, isP1P2) {
+  const flags = [];
+  const wit = field(it, 'System.WorkItemType');
+  const state = field(it, 'System.State');
+  const cat = resolveCategory(typeStateMapGlobal, wit, state);
+  const startStr = field(it, 'Microsoft.VSTS.Scheduling.StartDate', '');
+  const dueStr = field(it, 'Microsoft.VSTS.Scheduling.DueDate', '');
+  if (startStr && cat === 'Proposed' && new Date(startStr) < new Date()) {
+    flags.push('Past start date, not started');
+  }
+  if (dueStr) {
+    const daysToDue = Math.ceil((new Date(dueStr).getTime() - Date.now()) / 86400000);
+    if (daysToDue <= dueSoonDays && cat !== 'Completed') {
+      flags.push(daysToDue < 0 ? `Overdue (${Math.abs(daysToDue)}d)` : `Due in ${daysToDue}d`);
+    }
+  } else if (isP1P2) {
+    flags.push('No due date set');
+  }
+  return flags;
+}
+
+// Fetches the project's real ADO team names and offers them as autocomplete
+// suggestions on the four team fields above — the fields stay free-text
+// (so existing saved values keep working), but this makes it easy to pick
+// an exact, current team name instead of one that's stale or mistyped.
+async function loadAdoTeams() {
+  clearError();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  if (!org || !project || !pat) {
+    showError('Fill in organization, project, and PAT first, then load teams.');
+    return;
+  }
+  const btn = document.getElementById('loadTeamsBtn');
+  btn.disabled = true;
+  document.getElementById('team-load-status').textContent = 'Loading teams...';
+  try {
+    const base = `https://dev.azure.com/${org}`;
+    const data = await adoGet(`${base}/_apis/projects/${encodeURIComponent(project)}/teams?api-version=7.1`);
+    const teams = data.value || [];
+    document.getElementById('ado-team-options').innerHTML = teams
+      .map(t => `<option value="${t.name.replace(/"/g, '&quot;')}">`).join('');
+    document.getElementById('team-load-status').textContent =
+      `Found ${teams.length} team(s) — start typing in a team field above to see suggestions.`;
+  } catch (err) {
+    document.getElementById('team-load-status').textContent = '';
+    if (err.message === 'CORS_OR_NETWORK') showError('Blocked before reaching Azure DevOps — likely a CORS restriction.');
+    else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') showError('Authentication failed — check the PAT scope.');
+    else showError('Something went wrong loading teams: ' + (err.detail || err.message));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadCapacity() {
+  clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const remember = document.getElementById('remember').checked;
+  const areaDev = document.getElementById('areaDev').value.trim();
+  const areaQA = document.getElementById('areaQA').value.trim();
+  const areaAnalysis = document.getElementById('areaAnalysis').value.trim();
+  const areaTechnical = document.getElementById('areaTechnical').value.trim();
+  const teamChoice = document.getElementById('teamChoice').value;
+  const teamMap = { Dev: areaDev, QA: areaQA, Analysis: areaAnalysis, Technical: areaTechnical };
+  const teamName = teamMap[teamChoice];
+
+  const lookbackWeeks = Math.max(2, parseInt(document.getElementById('lookbackWeeks').value, 10) || 8);
+  const defaultCapacity = Math.max(0.5, parseFloat(document.getElementById('defaultCapacity').value) || 6);
+  const wipLimit = Math.max(1, parseInt(document.getElementById('wipLimit').value, 10) || 3);
+  const criticalPriority = parseInt(document.getElementById('criticalPriority').value, 10) || 1;
+  const criticalSeverityKeyword = document.getElementById('criticalSeverityKeyword').value.trim();
+  const weeksForward = Math.max(1, parseInt(document.getElementById('weeksForward').value, 10) || 8);
+  const createdAfter = document.getElementById('createdAfter').value; // 'YYYY-MM-DD' or ''
+  const workItemTypes = document.getElementById('workItemTypes').value.split(',').map(t => t.trim()).filter(Boolean);
+  const devsCount = Math.max(1, parseInt(document.getElementById('devsCount').value, 10) || 5);
+  const devHoursPerDay = Math.max(0.5, parseFloat(document.getElementById('devHoursPerDay').value) || 6);
+  const devDaysPerWeek = Math.max(1, parseFloat(document.getElementById('devDaysPerWeek').value) || 5);
+  const assumedEffortBug = Math.max(0.5, parseFloat(document.getElementById('assumedEffortBug').value) || 4);
+  const assumedEffortTask = Math.max(0.5, parseFloat(document.getElementById('assumedEffortTask').value) || 4);
+  const reworkRejectionRatePct = Math.max(0, parseFloat(document.getElementById('reworkRejectionRatePct').value) || 0);
+  const reworkEffortPct = Math.max(0, parseFloat(document.getElementById('reworkEffortPct').value) || 0);
+  const staleDays1 = Math.max(1, parseInt(document.getElementById('staleDays1').value, 10) || 30);
+  const staleDays2 = Math.max(1, parseInt(document.getElementById('staleDays2').value, 10) || 90);
+  const dueSoonDays = Math.max(1, parseInt(document.getElementById('dueSoonDays').value, 10) || 2);
+
+  if (!org || !project || !pat || !teamName) {
+    showError('Fill in organization, project, PAT, and the team name for the chosen team first.');
+    return;
+  }
+  if (remember) {
+    storage.set('ado-capacity-teamnames', JSON.stringify({ dev: areaDev, qa: areaQA, analysis: areaAnalysis, technical: areaTechnical }));
+    let existingConfig = {};
+    try { existingConfig = JSON.parse(storage.get('ado-config') || '{}'); } catch (e) {}
+    storage.set('ado-config', JSON.stringify({ ...existingConfig, org, project }));
+  }
+  storage.set('ado-capacity-teamchoice', teamChoice);
+  storage.set('ado-capacity-options', JSON.stringify({
+    lookbackWeeks, defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, createdAfter,
+    workItemTypes: document.getElementById('workItemTypes').value,
+    devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+    reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+  }));
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const teamBase = `${base}/${project}/${encodeURIComponent(teamName)}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+    typeStateMapGlobal = typeStateMap;
+
+    setStatus('Looking up Priority / Severity fields...');
+    priorityFieldRef = null; severityFieldRef = null;
+    for (const t of witTypes) {
+      if (!priorityFieldRef) priorityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Priority']);
+      if (!severityFieldRef) severityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Severity']);
+      if (priorityFieldRef && severityFieldRef) break;
+    }
+    const fields = FIELDS.slice();
+    if (priorityFieldRef) fields.push(priorityFieldRef);
+    if (severityFieldRef) fields.push(severityFieldRef);
+
+    setStatus(`Looking up ${teamChoice} team's area path...`);
+    let teamFieldValues = null;
+    try {
+      teamFieldValues = await adoGet(`${teamBase}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`);
+    } catch (e) {
+      showError(`Couldn't find team "${teamName}" — check the exact team name (Project Settings → Teams).`);
+      setStatus(''); btn.disabled = false; return;
+    }
+    const areaClause = buildAreaClause(teamFieldValues);
+    if (!areaClause) {
+      showError(`Team "${teamName}" has no area path configured — nothing to scope this to.`);
+      setStatus(''); btn.disabled = false; return;
+    }
+
+    const createdClause = createdAfter ? `AND [System.CreatedDate] >= '${createdAfter}'` : '';
+    const typeClause = workItemTypes.length
+      ? `AND [System.WorkItemType] IN (${workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})`
+      : '';
+
+    setStatus('Fetching all open items for this team...');
+    const openWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${createdClause}
+              ${typeClause}
+              ORDER BY [System.CreatedDate] ASC`, 'Open items for team');
+    const allTeamItems = await getItems(base, openWiql.workItems.map(w => w.id), fields);
+    const allOpenItems = allTeamItems.filter(isOpenItem);
+
+    setStatus('Fetching recent completions (for throughput)...');
+    const lookbackDays = lookbackWeeks * 7;
+    const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND ${areaClause}
+              ${createdClause}
+              ${typeClause}
+              AND [System.ChangedDate] >= @Today - ${lookbackDays}
+              ORDER BY [System.ChangedDate] DESC`, 'Recently changed items for team');
+    const recentChangedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
+    const completedInWindow = recentChangedItems.filter(it => {
+      const wit = field(it, 'System.WorkItemType');
+      const state = field(it, 'System.State');
+      return resolveCategory(typeStateMap, wit, state) === 'Completed';
+    });
+
+    // ---- Test Rejected — reuses the same Testing Status / defect-leakage
+    // mechanism already on the main dashboard (QA Test Case items whose
+    // Testing Status is one of the "Test Failure - Dev/QA/UAT" values).
+    setStatus('Looking up test-rejection data...');
+    let testRejectedItems = [], testCaseWindowCount = 0, testingStatusFieldRef = null;
+    try {
+      testingStatusFieldRef = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Testing Status', 'Test Status']);
+      if (testingStatusFieldRef) {
+        const tcFields = ['System.Id', 'System.Title', 'System.ChangedDate', 'System.AssignedTo', testingStatusFieldRef];
+        const tcWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND ${areaClause}
+                  AND [System.WorkItemType] = 'QA Test Case'
+                  AND [System.ChangedDate] >= @Today - ${lookbackDays}
+                  ORDER BY [System.ChangedDate] DESC`, 'Test cases for team (rejection rate)');
+        const tcItems = await getItems(base, tcWiql.workItems.map(w => w.id), tcFields);
+        testCaseWindowCount = tcItems.length;
+        testRejectedItems = tcItems.filter(it => {
+          const status = field(it, testingStatusFieldRef, '');
+          return status.toLowerCase().startsWith('test failure');
+        }).map(it => ({ item: it, status: field(it, testingStatusFieldRef, '') }));
+      }
+    } catch (e) { /* no QA Test Case type, or field not found — card falls back to the assumed rate */ }
+
+    setStatus('Looking up sprints...');
+    const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
+    const now = new Date();
+    const iterationByPath = {};
+    (allIterData.value || []).forEach(it => { iterationByPath[it.path] = it; });
+    const pastIterations = (allIterData.value || []).filter(it =>
+      it.attributes && it.attributes.finishDate && new Date(it.attributes.finishDate) < now);
+    const currentIteration = (allIterData.value || []).find(it =>
+      it.attributes && it.attributes.startDate && it.attributes.finishDate &&
+      new Date(it.attributes.startDate) <= now && new Date(it.attributes.finishDate) >= now) || null;
+
+    let carryoverItems = [];
+    if (pastIterations.length) {
+      setStatus('Checking for open items in past sprints...');
+      const pathsClause = pastIterations.map(it => `'${it.path.replace(/'/g, "''")}'`).join(',');
+      const carryWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND ${areaClause}
+                ${createdClause}
+                ${typeClause}
+                AND [System.IterationPath] IN (${pathsClause})
+                ORDER BY [System.IterationPath] ASC`, 'Items in past sprints');
+      const carryRaw = await getItems(base, carryWiql.workItems.map(w => w.id), fields);
+      carryoverItems = carryRaw.filter(isOpenItem).filter(it => !isUnallocatedPoolPath(field(it, 'System.IterationPath'))).map(it => {
+        const iterPath = field(it, 'System.IterationPath');
+        const iter = iterationByPath[iterPath];
+        const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+        // Approximate "how many times has this slipped a sprint" — count of
+        // past (already-ended) sprints that started after this item existed.
+        // ADO has no "slip count" field, so this is a proxy, not an exact count.
+        const created = field(it, 'System.CreatedDate');
+        const sprintsSlipped = created
+          ? pastIterations.filter(pi => pi.attributes && pi.attributes.startDate && new Date(pi.attributes.startDate) >= new Date(created)).length
+          : 1;
+        return { item: it, iterationName: iter ? iter.name : iterPath, finishDate: iter && iter.attributes ? iter.attributes.finishDate : null, urgency, sprintsSlipped };
+      });
+    }
+
+    // Split out the Unallocated Pool as its own thing — not a real sprint,
+    // so it doesn't belong in the normal open-items queue or the per-person
+    // capacity scheduling. Instead work out how long each item has actually
+    // been sitting there, from its revision history where possible.
+    const openItems = allOpenItems.filter(it => !isUnallocatedPoolPath(field(it, 'System.IterationPath')));
+    const poolItemsRaw = allOpenItems.filter(it => isUnallocatedPoolPath(field(it, 'System.IterationPath')));
+    let unallocatedPoolItems = [];
+    if (poolItemsRaw.length) {
+      setStatus(`Checking how long ${poolItemsRaw.length} pool item(s) have been sitting...`);
+      const POOL_HISTORY_CAP = 150;
+      const toCheck = poolItemsRaw.slice(0, POOL_HISTORY_CAP);
+      const poolSinceResults = await mapWithConcurrency(toCheck, 5, async (it) => {
+        try {
+          const updates = await adoGet(`${base}/_apis/wit/workitems/${it.id}/updates?api-version=7.1`);
+          const poolMoves = (updates.value || []).filter(u =>
+            u.fields && u.fields['System.IterationPath'] && isUnallocatedPoolPath(u.fields['System.IterationPath'].newValue));
+          const last = poolMoves[poolMoves.length - 1];
+          if (!last) return field(it, 'System.CreatedDate');
+          const changedDate = last.fields['System.ChangedDate'] && last.fields['System.ChangedDate'].newValue;
+          if (changedDate) return changedDate;
+          // revisedDate is only reliable as a fallback if it isn't ADO's
+          // "not yet superseded" sentinel (far-future date on the latest revision)
+          if (last.revisedDate && new Date(last.revisedDate).getFullYear() < 3000) return last.revisedDate;
+          return field(it, 'System.CreatedDate');
+        } catch (e) {
+          return field(it, 'System.CreatedDate'); // fall back to created date if history lookup fails
+        }
+      });
+      unallocatedPoolItems = toCheck.map((it, i) => ({ item: it, since: poolSinceResults[i], approx: false }));
+      // anything beyond the cap still gets shown, just without a reliable "since" date
+      poolItemsRaw.slice(POOL_HISTORY_CAP).forEach(it => {
+        unallocatedPoolItems.push({ item: it, since: field(it, 'System.CreatedDate'), approx: true });
+      });
+    }
+
+    lastState = {
+      teamChoice, teamName, openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks,
+      defaultCapacity, wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath, createdAfter,
+      devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+      reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+      testRejectedItems, testCaseWindowCount, testingStatusFieldRef, currentIteration,
+    };
+
+    setStatus('Scoring and scheduling...');
+    computeAndRender();
+    document.getElementById('reviewing-team-badge').textContent = `Reviewing ADO team "${teamName}" (${teamChoice})`;
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server.');
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — check the PAT has Work Items (Read) scope.');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const label = err.label ? `<strong>Step:</strong> ${err.label}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      showError(`<strong>${err.message.replace('HTTP_', 'HTTP ')}.</strong><br>${label}${detail}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Scoring + scheduling
+// ---------------------------------------------------------------------
+function computeAndRender() {
+  const { openItems, unallocatedPoolItems, completedInWindow, carryoverItems, lookbackWeeks, defaultCapacity,
+          wipLimit, criticalPriority, criticalSeverityKeyword, weeksForward, iterationByPath,
+          devsCount, devHoursPerDay, devDaysPerWeek, assumedEffortBug, assumedEffortTask,
+          reworkRejectionRatePct, reworkEffortPct, staleDays1, staleDays2, dueSoonDays,
+          testRejectedItems, testCaseWindowCount, currentIteration } = lastState;
+  const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
+
+  // Score every open item once.
+  const scored = openItems.map(it => {
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const assignee = field(it, 'System.AssignedTo', '') || null;
+    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')) };
+  });
+
+  // Pool items are scored too (so criticals in the pool still show up in the
+  // banner), but never enter the per-person capacity queue below.
+  const scoredPool = unallocatedPoolItems.map(p => {
+    const it = p.item;
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const assignee = field(it, 'System.AssignedTo', '') || null;
+    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')), since: p.since, approx: p.approx };
+  });
+
+  // Criticals lead everywhere they're listed — every table below reads
+  // from these two arrays (or from carryoverItems, sorted the same way in
+  // renderCarryover), so sorting once here keeps that consistent everywhere.
+  sortCriticalFirst(scored);
+  sortCriticalFirst(scoredPool);
+
+  // Per-person throughput from completed items in the lookback window.
+  const byPerson = {};
+  function ensurePerson(name) {
+    if (!byPerson[name]) byPerson[name] = { name, completed: [], open: [] };
+    return byPerson[name];
+  }
+  completedInWindow.forEach(it => {
+    const assignee = field(it, 'System.AssignedTo', '');
+    if (!assignee) return;
+    const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const effort = effortFor(it, assumedByType);
+    const created = field(it, 'System.CreatedDate');
+    const changed = field(it, 'System.ChangedDate');
+    const cycleDays = (created && changed) ? Math.max(0, (new Date(changed) - new Date(created)) / 86400000) : null;
+    ensurePerson(assignee).completed.push({ item: it, complexity, urgency, effort, cycleDays });
+  });
+  scored.forEach(s => {
+    if (s.assignee) ensurePerson(s.assignee).open.push(s);
+  });
+
+  Object.values(byPerson).forEach(p => {
+    const completedCount = p.completed.length;
+    const throughputPerWeek = completedCount / lookbackWeeks;
+    const avgComplexity = completedCount
+      ? p.completed.reduce((sum, c) => sum + c.complexity.score, 0) / completedCount
+      : null;
+    p.hasHistory = completedCount > 0;
+    p.weeklyCapacityPoints = p.hasHistory
+      ? Math.max(1, throughputPerWeek * avgComplexity)
+      : defaultCapacity;
+    p.throughputPerWeek = Math.round(throughputPerWeek * 10) / 10;
+    p.avgComplexity = avgComplexity != null ? Math.round(avgComplexity * 10) / 10 : null;
+    p.wipCount = p.open.filter(s => isInProgressItem(s.item)).length;
+  });
+
+  // Schedule per person: criticals always land in "this week" on top of the
+  // queue; everything else is queued oldest/highest-urgency first within
+  // High/Medium complexity, with Low-complexity items pushed to the very
+  // back of the queue (tackled last, regardless of urgency) and spilling
+  // into later weeks once weekly capacity is used up.
+  const criticalItems = [];
+  Object.values(byPerson).forEach(p => {
+    const nonCritical = p.open.filter(s => !s.urgency.critical);
+    p.open.filter(s => s.urgency.critical).forEach(s => {
+      s.suggestedWeek = 0;
+      criticalItems.push(s);
+    });
+    nonCritical.sort((a, b) => {
+      const aLow = a.complexity.label === 'Low' ? 1 : 0;
+      const bLow = b.complexity.label === 'Low' ? 1 : 0;
+      if (aLow !== bLow) return aLow - bLow; // non-Low first, Low last
+      if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
+      return (b.age || 0) - (a.age || 0);
+    });
+    let weekIdx = 0, consumed = 0;
+    nonCritical.forEach(s => {
+      if (consumed > 0 && consumed + s.complexity.score > p.weeklyCapacityPoints) {
+        weekIdx++; consumed = 0;
+      }
+      s.suggestedWeek = Math.min(weekIdx, weeksForward);
+      consumed += s.complexity.score;
+    });
+  });
+
+  // Pool criticals don't get scheduled (pool is kept separate), but they
+  // still belong in the critical banner — they need pulling out of the pool.
+  const poolCriticals = scoredPool.filter(s => s.urgency.critical);
+
+  // Unassigned criticals never pass through a person's queue above (there's
+  // no queue to bypass), so they'd otherwise silently drop out of the
+  // banner entirely — which is exactly backwards, since nobody owning a
+  // critical item is worse, not better. Surface them explicitly instead.
+  const unassignedCriticals = scored.filter(s => !s.assignee && s.urgency.critical);
+
+  // Sprint-status comparison (actual current iteration vs. suggested week).
+  scored.forEach(s => { s._sprintStatus = sprintStatus(s, iterationByPath); });
+
+  const unassigned = scored.filter(s => !s.assignee);
+
+  // Rejection rate: real data when there's enough of it, else the
+  // configured fallback (the doc's 30%/50% worked-example assumption).
+  const rejectionRatePct = testCaseWindowCount > 0
+    ? Math.round((testRejectedItems.length / testCaseWindowCount) * 1000) / 10
+    : reworkRejectionRatePct;
+  const rejectionRateIsAssumed = testCaseWindowCount === 0;
+
+  renderScrumHero(scored, currentIteration, criticalItems, poolCriticals, unassignedCriticals);
+  renderBurndown(scored, completedInWindow, currentIteration, assumedByType);
+  renderPriorityDonut(scored);
+  renderCapacityBars(byPerson, assumedByType, devHoursPerDay, devDaysPerWeek);
+  renderPerformanceTab(byPerson, lookbackWeeks, wipLimit);
+  renderActivityTimeline(scored, completedInWindow);
+}
+
+// ---------------------------------------------------------------------
+// Team Performance — a single equal-weighted composite score per
+// developer across 5 metrics, computed from completed-item and WIP data.
+// Each metric is min-max scaled 0-100 across this team (so it's a
+// relative read, not an absolute grade), then the 5 scaled metrics are
+// averaged for the composite.
+//   - Effort delivered: total completed-item effort hours this window
+//   - Completion time: average cycle time (Created -> Changed/Closed) in
+//     days, lower is better, so this one is inverted after scaling
+//   - Priority handling: % of completed items that were P1/P2
+//   - Severity handling: % of completed items with a critical severity
+//   - WIP completion: completed / (completed + still-open-WIP)
+// ---------------------------------------------------------------------
+function minMaxScale(values) {
+  const nums = values.filter(v => v != null && !isNaN(v));
+  if (!nums.length) return () => 50; // nothing to compare against
+  const min = Math.min(...nums), max = Math.max(...nums);
+  if (max === min) return (v) => (v == null || isNaN(v)) ? 50 : 100;
+  return (v) => (v == null || isNaN(v)) ? 0 : Math.round(((v - min) / (max - min)) * 1000) / 10;
+}
+
+// Deterministic per-person avatar color, so a given name always gets the same color.
+const PERF_AVATAR_PALETTE = ['#3f51b5', '#00897b', '#8e24aa', '#c62828', '#00acc1', '#6d4c41', '#558b2f', '#ad1457', '#5e35b1', '#00695c'];
+function avatarColorFor(name) {
+  let h = 0;
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PERF_AVATAR_PALETTE[h % PERF_AVATAR_PALETTE.length];
+}
+function initialsFor(name) { return (name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
+// Tiering for color-coded chips/bars: >=70 good, >=40 warn, else bad.
+function tierFor(score) {
+  if (score == null || isNaN(score)) return 'na';
+  return score >= 70 ? 'good' : score >= 40 ? 'warn' : 'bad';
+}
+const TIER_COLOR = { good: '#43d9a3', warn: '#f0b450', bad: '#f0606e', na: '#3a4157' };
+
+function renderPerformanceTab(byPerson, lookbackWeeks, wipLimit) {
+  document.getElementById('perf-lookback-weeks').textContent = lookbackWeeks;
+  const people = Object.values(byPerson).filter(p => p.completed.length > 0 || p.wipCount > 0);
+
+  if (!people.length) {
+    document.getElementById('perf-empty').style.display = 'block';
+    document.getElementById('perf-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('perf-empty').style.display = 'none';
+  document.getElementById('perf-content').style.display = 'block';
+
+  const metrics = people.map(p => {
+    const n = p.completed.length;
+    const effortHours = p.completed.reduce((sum, c) => sum + (c.effort ? c.effort.hours : 0), 0);
+    const cycleTimes = p.completed.map(c => c.cycleDays).filter(v => v != null);
+    const avgCycleDays = cycleTimes.length ? cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length : null;
+    const p1p2Count = p.completed.filter(c => parseLeadingNumber(c.urgency.priorityRaw) != null && parseLeadingNumber(c.urgency.priorityRaw) <= 2).length;
+    const priorityPct = n ? (p1p2Count / n) * 100 : null;
+    const critSeverityCount = p.completed.filter(c => c.urgency.critical).length;
+    const severityPct = n ? (critSeverityCount / n) * 100 : null;
+    const wipTotal = n + (p.wipCount || 0);
+    const wipCompletionPct = wipTotal ? (n / wipTotal) * 100 : null;
+    return { name: p.name, n, effortHours, avgCycleDays, priorityPct, severityPct, wipCompletionPct, wipCount: p.wipCount || 0 };
+  });
+
+  const scaleEffort = minMaxScale(metrics.map(m => m.effortHours));
+  const scaleCycle = minMaxScale(metrics.map(m => m.avgCycleDays));
+  const scalePriority = minMaxScale(metrics.map(m => m.priorityPct));
+  const scaleSeverity = minMaxScale(metrics.map(m => m.severityPct));
+  const scaleWip = minMaxScale(metrics.map(m => m.wipCompletionPct));
+
+  const scored = metrics.map(m => {
+    const effortScore = scaleEffort(m.effortHours);
+    const cycleScoreRaw = scaleCycle(m.avgCycleDays);
+    const cycleScore = m.avgCycleDays == null ? 50 : 100 - cycleScoreRaw; // lower cycle time is better
+    const priorityScore = scalePriority(m.priorityPct);
+    const severityScore = scaleSeverity(m.severityPct);
+    const wipScore = scaleWip(m.wipCompletionPct);
+    const composite = (effortScore + cycleScore + priorityScore + severityScore + wipScore) / 5;
+    return { ...m, effortScore, cycleScore, priorityScore, severityScore, wipScore, composite: Math.round(composite * 10) / 10 };
+  }).sort((a, b) => b.composite - a.composite);
+
+  // ---- KPI strip ----
+  const totalCompletions = scored.reduce((sum, s) => sum + s.n, 0);
+  const teamAvgComposite = Math.round((scored.reduce((sum, s) => sum + s.composite, 0) / scored.length) * 10) / 10;
+  const cycleVals = scored.map(s => s.avgCycleDays).filter(v => v != null);
+  const teamAvgCycle = cycleVals.length ? Math.round((cycleVals.reduce((a, b) => a + b, 0) / cycleVals.length) * 10) / 10 : null;
+  const top = scored[0];
+  const kpis = [
+    { label: 'Top performer', value: top ? top.name : '—', sub: top ? `Composite ${top.composite}` : '', icon: '\u{1F3C6}', accent: '#caa23a' },
+    { label: 'Team avg composite', value: teamAvgComposite, sub: `across ${scored.length} developer(s)`, icon: '\u{1F4CA}', accent: '#6a5ff0' },
+    { label: 'Completions (window)', value: totalCompletions, sub: `last ${lookbackWeeks} week(s)`, icon: '✅', accent: '#43d9a3' },
+    { label: 'Avg completion time', value: teamAvgCycle == null ? 'n/a' : teamAvgCycle + 'd', sub: 'created → closed', icon: '⏱', accent: '#00c2a8' },
+  ];
+  document.getElementById('perf-kpi-row').innerHTML = kpis.map(k => `
+    <div class="kpi-tile" style="--kpi-accent:${k.accent}">
+      <span class="kpi-icon">${k.icon}</span>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join('');
+
+  renderPerfRankChart('chart-perf-rank', scored.map(s => s.name), scored.map(s => s.composite));
+  renderPerfDonutChart('chart-perf-donut', scored.map(s => s.name), scored.map(s => s.n));
+
+  const rankBadge = (i) => {
+    const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    return `<span class="rank-badge ${cls}">${i + 1}</span>`;
+  };
+  const avatarHtml = (name, size) => `<span class="avatar" style="background:${avatarColorFor(name)}${size ? `;width:${size}px;height:${size}px` : ''}">${initialsFor(name)}</span>`;
+  const chip = (val, suffix, score) => {
+    const t = val == null ? 'na' : tierFor(score);
+    const text = val == null ? 'n/a' : `${Math.round(val)}${suffix || ''}`;
+    return `<span class="metric-chip tier-${t}"><span class="chip-dot"></span>${text}</span>`;
+  };
+  const scoreBar = (v) => `<div class="score-bar-track"><div class="score-bar-fill" style="width:${Math.max(2, v)}%;background:${TIER_COLOR[tierFor(v)]}"></div></div>`;
+
+  document.getElementById('rows-perf-rank').innerHTML = scored.map((s, i) => `
+    <tr>
+      <td>${rankBadge(i)}</td>
+      <td><div class="name-cell">${avatarHtml(s.name)}${s.name}</div></td>
+      <td><div class="composite-cell"><span class="composite-num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</span>${scoreBar(s.composite)}</div></td>
+      <td>${chip(s.effortHours, 'h', s.effortScore)}</td>
+      <td>${chip(s.avgCycleDays, 'd', s.cycleScore)}</td>
+      <td>${chip(s.priorityPct, '%', s.priorityScore)}</td>
+      <td>${chip(s.severityPct, '%', s.severityScore)}</td>
+      <td>${chip(s.wipCompletionPct, '%', s.wipScore)}</td>
+      <td>${s.n}</td>
+    </tr>`).join('');
+
+  // ---- Per-developer breakdown cards ----
+  const miniBar = (label, val, suffix, score) => `
+    <div class="pdc-metric-row">
+      <span class="m-label">${label}</span>
+      <div class="pdc-mini-track"><div class="pdc-mini-fill" style="width:${Math.max(2, score == null ? 0 : score)}%;background:${TIER_COLOR[tierFor(score)]}"></div></div>
+      <span class="m-val">${val == null ? 'n/a' : Math.round(val) + (suffix || '')}</span>
+    </div>`;
+  document.getElementById('perf-dev-grid').innerHTML = scored.map((s, i) => `
+    <div class="dev-card">
+      <div class="pdc-head">
+        ${avatarHtml(s.name, 38)}
+        <div>
+          <div class="pdc-name">${s.name}</div>
+          <div class="pdc-rank">Rank #${i + 1} of ${scored.length}</div>
+        </div>
+        <div class="pdc-score">
+          <div class="num" style="color:${TIER_COLOR[tierFor(s.composite)]}">${s.composite}</div>
+          <div class="lbl">Composite</div>
+        </div>
+      </div>
+      ${miniBar('Effort', s.effortHours, 'h', s.effortScore)}
+      ${miniBar('Comp. time', s.avgCycleDays, 'd', s.cycleScore)}
+      ${miniBar('Priority', s.priorityPct, '%', s.priorityScore)}
+      ${miniBar('Severity', s.severityPct, '%', s.severityScore)}
+      ${miniBar('WIP comp.', s.wipCompletionPct, '%', s.wipScore)}
+      <div class="pdc-foot"><span>${s.n} completed</span><span>${s.wipCount} in WIP</span></div>
+    </div>`).join('');
+}
+
+let perfChart = null;
+function renderPerfRankChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (perfChart) perfChart.destroy();
+  const colors = data.map(v => TIER_COLOR[tierFor(v)]);
+  perfChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Composite score', data, backgroundColor: colors, borderRadius: 6, maxBarThickness: 26 }] },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, max: 100, grid: { color: '#262b3d' }, ticks: { color: '#9aa3bd' } },
+        y: { grid: { display: false }, ticks: { color: '#e4e7f2', font: { weight: '600' } } },
+      },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+let perfDonutChart = null;
+const PERF_DONUT_PALETTE = ['#6a5ff0', '#00c2a8', '#f0b450', '#f0606e', '#3f8cf0', '#c362e8', '#43d9a3', '#e88a3a'];
+function renderPerfDonutChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (perfDonutChart) perfDonutChart.destroy();
+  perfDonutChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: PERF_DONUT_PALETTE.slice(0, Math.max(labels.length, 1)), borderColor: '#131620', borderWidth: 2 }] },
+    options: {
+      cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#cfd3e4', boxWidth: 10, padding: 10, font: { size: 11 } } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------
+// Today's scrum — sprint pulse, this week's top P1/P2 focus, and a
+// blocked-right-now list. The three things a stand-up actually needs,
+// pulled to the top of the page.
+// ---------------------------------------------------------------------
+function isBlockedState(it) {
+  return /block/i.test(field(it, 'System.State', ''));
+}
+function isP1P2(s) {
+  const n = parseLeadingNumber(s.urgency.priorityRaw);
+  return n != null && n <= 2;
+}
+function renderScrumHero(scored, currentIteration, criticalItems, poolCriticals, unassignedCriticals) {
+  document.getElementById('sec-scrum').style.display = 'block';
+  const tiles = [];
+  if (currentIteration && currentIteration.attributes) {
+    const start = new Date(currentIteration.attributes.startDate);
+    const end = new Date(currentIteration.attributes.finishDate);
+    const totalDays = Math.max(1, Math.round((end - start) / 86400000));
+    const daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+    const inSprint = scored.filter(s => field(s.item, 'System.IterationPath') === currentIteration.path);
+    const criticalInSprint = inSprint.filter(s => s.urgency.critical).length;
+    tiles.push({ label: 'Current sprint', value: currentIteration.name, sub: '', icon: '\u{1F4C5}', accent: '#6a5ff0' });
+    tiles.push({ label: 'Days left', value: `${daysLeft} / ${totalDays}`, sub: 'in this sprint', icon: '⏱', accent: '#00c2a8' });
+    tiles.push({ label: 'Open in sprint', value: inSprint.length, sub: 'items', icon: '\u{1F4CB}', accent: '#3f8cf0' });
+    tiles.push({ label: 'Critical in sprint', value: criticalInSprint, sub: 'priority/severity', icon: '\u{1F6A8}', accent: criticalInSprint ? '#f0606e' : '#43d9a3' });
+  } else {
+    tiles.push({ label: 'Current sprint', value: 'None found', sub: "check this team's iteration schedule", icon: '❓', accent: '#74799a' });
+  }
+  const blockedCount = scored.filter(s => isBlockedState(s.item)).length;
+  const totalCritical = criticalItems.length + poolCriticals.length + unassignedCriticals.length;
+  tiles.push({ label: 'Blocked', value: blockedCount, sub: 'need unblocking', icon: '⛔', accent: blockedCount ? '#f0606e' : '#43d9a3' });
+  tiles.push({ label: 'Critical total', value: totalCritical, sub: 'sprint + pool + unassigned', icon: '⚡', accent: totalCritical ? '#f0606e' : '#43d9a3' });
+
+  document.getElementById('scrum-pulse').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--kpi-accent:${t.accent}">
+      <span class="kpi-icon">${t.icon}</span>
+      <div class="kpi-label">${t.label}</div>
+      <div class="kpi-value" style="font-size:19px">${t.value}</div>
+      <div class="kpi-sub">${t.sub}</div>
+    </div>`).join('');
+
+  const fl = (s, cls) => {
+    const it = s.item;
+    const idCell = workItemBaseUrl
+      ? `<a class="fl-id" href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener">#${it.id}</a>`
+      : `<span class="fl-id">#${it.id}</span>`;
+    return `<li>${idCell}<span class="fl-title">${field(it, 'System.Title')}</span><span class="chip">${s.assignee || 'Unassigned'}</span></li>`;
+  };
+
+  const focus = scored.filter(isP1P2).slice(0, 6);
+  document.getElementById('scrum-focus').innerHTML = focus.length
+    ? focus.map(s => fl(s)).join('')
+    : '<li class="empty-row">Nothing at P1/P2 right now.</li>';
+
+  const blocked = scored.filter(s => isBlockedState(s.item));
+  document.getElementById('scrum-blockers').innerHTML = blocked.length
+    ? blocked.map(s => fl(s)).join('')
+    : '<li class="empty-row">Nothing blocked.</li>';
+}
+
+// ---------------------------------------------------------------------
+// Sprint burndown — ADO keeps no daily history here, so this plots the
+// ideal trend line (committed effort -> 0 across the sprint) against a
+// single "today" marker for actual remaining effort. Honest about its
+// own limits rather than faking a day-by-day history.
+// ---------------------------------------------------------------------
+let burndownChart = null;
+function renderBurndown(scored, completedInWindow, currentIteration, assumedByType) {
+  const canvas = document.getElementById('chart-burndown');
+  const sub = document.getElementById('burndown-sub');
+  if (!currentIteration || !currentIteration.attributes) {
+    sub.textContent = "No current sprint found for this team's iteration schedule — nothing to burn down.";
+    if (burndownChart) { burndownChart.destroy(); burndownChart = null; }
+    return;
+  }
+  const start = new Date(currentIteration.attributes.startDate);
+  const end = new Date(currentIteration.attributes.finishDate);
+  const totalDays = Math.max(1, Math.round((end - start) / 86400000));
+  const todayOffset = Math.min(totalDays, Math.max(0, Math.round((Date.now() - start) / 86400000)));
+
+  const inSprintOpen = scored.filter(s => field(s.item, 'System.IterationPath') === currentIteration.path);
+  const remainingToday = inSprintOpen.reduce((sum, s) => sum + effortFor(s.item, assumedByType).hours, 0);
+  const burnedInSprint = completedInWindow
+    .filter(it => field(it, 'System.IterationPath') === currentIteration.path)
+    .reduce((sum, it) => sum + effortFor(it, assumedByType).hours, 0);
+  const committed = remainingToday + burnedInSprint;
+
+  sub.textContent = `${currentIteration.name}: ~${Math.round(committed)}h committed this sprint, ~${Math.round(remainingToday)}h remaining as of today (day ${todayOffset} of ${totalDays}).`;
+
+  const labels = [];
+  const ideal = [];
+  for (let d = 0; d <= totalDays; d++) {
+    labels.push(d === 0 ? 'Start' : d === totalDays ? 'End' : `Day ${d}`);
+    ideal.push(Math.max(0, Math.round((committed - (committed / totalDays) * d) * 10) / 10));
+  }
+  const actualPoints = labels.map((_, d) => d === todayOffset ? Math.round(remainingToday * 10) / 10 : null);
+
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (burndownChart) burndownChart.destroy();
+  burndownChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Ideal pace', data: ideal, borderColor: '#3f8cf0', borderDash: [6, 4], pointRadius: 0, tension: 0 },
+      { label: 'Actual (today)', data: actualPoints, borderColor: '#f0606e', backgroundColor: '#f0606e', pointRadius: 7, showLine: false },
+    ] },
+    options: {
+      plugins: { legend: { labels: { color: '#cfd3e4', boxWidth: 10, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: '#262b3d' }, ticks: { color: '#9aa3bd', maxRotation: 0, autoSkip: true } },
+        y: { beginAtZero: true, grid: { color: '#262b3d' }, ticks: { color: '#9aa3bd' }, title: { display: true, text: 'Remaining effort (h)', color: '#8b93ad' } },
+      },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------
+// Open items by priority — quick mix of what's actually open right now.
+// ---------------------------------------------------------------------
+let priorityDonutChart = null;
+function renderPriorityDonut(scored) {
+  const canvas = document.getElementById('chart-priority-donut');
+  const buckets = {};
+  scored.forEach(s => {
+    const n = parseLeadingNumber(s.urgency.priorityRaw);
+    const label = n == null ? 'Unset' : `P${n}`;
+    buckets[label] = (buckets[label] || 0) + 1;
+  });
+  const order = ['P1', 'P2', 'P3', 'P4', 'Unset'];
+  const labels = Object.keys(buckets).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const data = labels.map(l => buckets[l]);
+  const colorMap = { P1: '#f0606e', P2: '#f0b450', P3: '#3f8cf0', P4: '#43d9a3', Unset: '#74799a' };
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (priorityDonutChart) priorityDonutChart.destroy();
+  priorityDonutChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: labels.map(l => colorMap[l] || '#6a5ff0'), borderColor: '#131620', borderWidth: 2 }] },
+    options: {
+      cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#cfd3e4', boxWidth: 10, padding: 10, font: { size: 11 } } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------
+// Capacity — who's filling their hours. Assigned-effort hours (real or
+// assumed) against each person's configured productive hours. Not
+// logged time — ADO has no time clock without an extra field.
+// ---------------------------------------------------------------------
+function renderCapacityBars(byPerson, assumedByType, devHoursPerDay, devDaysPerWeek) {
+  const capacityHours = (devHoursPerDay || 6) * (devDaysPerWeek || 5);
+  const people = Object.values(byPerson);
+  const container = document.getElementById('cap-bars');
+  if (!people.length) { container.innerHTML = '<div class="empty-row">No assigned open items yet — analyze a team above.</div>'; return; }
+  container.innerHTML = people.map(p => {
+    const assignedHours = p.open.reduce((sum, s) => sum + effortFor(s.item, assumedByType).hours, 0);
+    const pct = capacityHours > 0 ? Math.round((assignedHours / capacityHours) * 100) : 0;
+    const tier = pct < 70 ? 'warn' : pct <= 130 ? 'good' : 'bad';
+    const label = pct < 70 ? `Under-filled (${pct}%)` : pct <= 130 ? `Full (${pct}%)` : `Overloaded (${pct}%)`;
+    const fillPct = Math.min(100, pct);
+    return `
+      <div class="cap-row">
+        <div class="cap-person"><span class="avatar" style="background:${avatarColorFor(p.name)};width:26px;height:26px;font-size:10.5px">${initialsFor(p.name)}</span>${p.name}</div>
+        <div class="cap-track"><div class="cap-fill" style="width:${fillPct}%;background:${TIER_COLOR[tier]}"></div></div>
+        <div class="cap-hours"><strong>${Math.round(assignedHours * 10) / 10}h</strong> / ${Math.round(capacityHours * 10) / 10}h</div>
+        <span class="metric-chip tier-${tier}"><span class="chip-dot"></span>${label}</span>
+      </div>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------
+// Recent activity — merged open-item updates and completions, newest
+// first, as a simple dot-timeline.
+// ---------------------------------------------------------------------
+function renderActivityTimeline(scored, completedInWindow) {
+  const items = [];
+  scored.forEach(s => {
+    items.push({ id: s.item.id, title: field(s.item, 'System.Title'), who: s.assignee || 'Unassigned',
+      changed: field(s.item, 'System.ChangedDate'), kind: isBlockedState(s.item) ? 'blocked' : 'updated' });
+  });
+  completedInWindow.forEach(it => {
+    items.push({ id: it.id, title: field(it, 'System.Title'), who: field(it, 'System.AssignedTo', 'Unassigned'),
+      changed: field(it, 'System.ChangedDate'), kind: 'completed' });
+  });
+  items.sort((a, b) => new Date(b.changed) - new Date(a.changed));
+  const top = items.slice(0, 15);
+  const dotColor = { completed: '#43d9a3', blocked: '#f0606e', updated: '#6a5ff0' };
+  const container = document.getElementById('activity-timeline');
+  if (!top.length) { container.innerHTML = '<div class="empty-row">No recent activity in this window.</div>'; return; }
+  container.innerHTML = top.map(it => {
+    const when = it.changed ? new Date(it.changed).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const idCell = workItemBaseUrl
+      ? `<a class="fl-id" href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener">#${it.id}</a>`
+      : `<span class="fl-id">#${it.id}</span>`;
+    const verb = it.kind === 'completed' ? 'completed' : it.kind === 'blocked' ? 'blocked' : 'updated';
+    return `
+      <div class="tl-item">
+        <div class="tl-dot" style="background:${dotColor[it.kind]}"></div>
+        <div class="tl-time">${when}</div>
+        <div class="tl-body">${idCell}${it.title} <span class="chip">${verb}</span><span class="tl-who">${it.who}</span></div>
+      </div>`;
+  }).join('');
+}
+
+</script>
+</body>
+</html>
