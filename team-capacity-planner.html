@@ -7,6 +7,7 @@
 <script src="session.js"></script>
 <script src="nav.js"></script>
 <script src="loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
@@ -111,6 +112,36 @@
   .section-count { font-weight: 400; color: var(--muted); font-size: 12px; text-transform: none; margin-left: 6px; }
   label.inline-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
     text-transform: none; font-weight: 600; cursor: pointer; }
+
+  .top-tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--border); }
+  .top-tabs button { background: none; border: none; box-shadow: none; color: var(--muted); font-weight: 700;
+    font-size: 13px; text-transform: none; letter-spacing: 0; padding: 10px 18px; cursor: pointer;
+    border-bottom: 3px solid transparent; margin-bottom: -2px; border-radius: 0; }
+  .top-tabs button:hover { color: var(--text); background: none; }
+  .top-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ---- Team Performance tab: dark, chart-forward, scoped to this tab only ---- */
+  #tab-performance { background: #10131c; color: #e4e7f0; border-radius: 6px; padding: 24px; margin: -4px; }
+  #tab-performance h2 { color: #fff; font-size: 16px; margin: 0 0 4px 0; }
+  #tab-performance .perf-meta { color: #9aa3b8; font-size: 13px; margin-bottom: 18px; }
+  #tab-performance .perf-card { background: #1a1e2c; border: 1px solid #2a3046; border-radius: 8px; padding: 18px; margin-bottom: 20px; }
+  #tab-performance .perf-chart-wrap { height: 320px; }
+  .perf-rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .perf-rank-table th { text-align: left; color: #9aa3b8; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 1px solid #2a3046; white-space: nowrap; }
+  .perf-rank-table td { padding: 10px; border-bottom: 1px solid #242938; vertical-align: middle; }
+  .perf-rank-table tr:last-child td { border-bottom: none; }
+  .perf-rank-table tr:hover td { background: #20263a; }
+  .perf-rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    border-radius: 50%; background: #2a3046; color: #e4e7f0; font-weight: 700; font-size: 12px; }
+  .perf-rank-badge.gold { background: #caa23a; color: #1a1e2c; }
+  .perf-rank-badge.silver { background: #a3abc2; color: #1a1e2c; }
+  .perf-rank-badge.bronze { background: #b5743a; color: #1a1e2c; }
+  .perf-avatar { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+    border-radius: 50%; background: #3f51b5; color: #fff; font-size: 11px; font-weight: 700; margin-right: 8px; }
+  .perf-metric-pill { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .perf-score-bar-track { background: #242938; border-radius: 3px; height: 6px; width: 72px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .perf-score-bar-fill { height: 100%; background: linear-gradient(90deg,#6a5ff0,#8f7bf7); }
 </style>
 </head>
 <body>
@@ -119,11 +150,11 @@
 
   <h1>Dev Planner</h1>
   <div class="subtitle">Focused on the development team: weekly capacity vs. real velocity, each developer's week, a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), test rejections, and everything still open in sprints that have already ended.</div>
-  <nav class="jump-nav" id="jump-nav" style="display:none">
-    <a href="#sec-scrum">Scrum</a><a href="#sec-open">P1/P2</a><a href="#sec-capacity-card">Capacity</a>
-    <a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a><a href="#sec-carryover">Carry-over</a>
-    <a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
-  </nav>
+
+  <div class="top-tabs">
+    <button id="tabbtn-planner" class="active" onclick="switchTab('planner')" type="button">Planner</button>
+    <button id="tabbtn-performance" onclick="switchTab('performance')" type="button">Team Performance</button>
+  </div>
 
   <div class="config">
     <div style="display:none">
@@ -184,6 +215,14 @@
       </div>
     </details>
   </div>
+
+  <div id="tab-planner">
+
+  <nav class="jump-nav" id="jump-nav" style="display:none">
+    <a href="#sec-scrum">Scrum</a><a href="#sec-open">P1/P2</a><a href="#sec-capacity-card">Capacity</a>
+    <a href="#sec-devperf">Dev workload</a><a href="#sec-wip">WIP</a><a href="#sec-carryover">Carry-over</a>
+    <a href="#sec-testrejected">Test Rejected</a><a href="#sec-pool">Pool</a>
+  </nav>
 
   <div id="error"></div>
 
@@ -304,6 +343,28 @@
     </tr></thead>
     <tbody id="rows-testrejected"></tbody></table></div>
   </details>
+
+  </div><!-- /tab-planner -->
+
+  <div id="tab-performance" style="display:none">
+    <div id="perf-empty" class="meta">Click "Analyze Team" above to load data — this tab ranks developers from the same load, so there's nothing to show until then.</div>
+    <div id="perf-content" style="display:none">
+      <h2>Team performance ranking</h2>
+      <div class="perf-meta">Composite score over the last <span id="perf-lookback-weeks"></span> week(s), equal-weighted across 5 metrics: effort delivered, completion time, priority handling, severity handling, and WIP completion rate. Each metric is scaled 0–100 relative to this team, then averaged — not a judgment of who's "best," just one read on the data ADO has.</div>
+
+      <div class="perf-card">
+        <div class="perf-chart-wrap"><canvas id="chart-perf-rank"></canvas></div>
+      </div>
+
+      <div class="perf-card">
+        <div class="table-wrap"><table class="perf-rank-table"><thead><tr>
+          <th>Rank</th><th>Developer</th><th>Composite</th><th>Effort delivered</th><th>Completion time</th>
+          <th>Priority handling</th><th>Severity handling</th><th>WIP completion</th><th>Completions (window)</th>
+        </tr></thead>
+        <tbody id="rows-perf-rank"></tbody></table></div>
+      </div>
+    </div>
+  </div>
 
 </div>
 
@@ -1032,7 +1093,12 @@ function computeAndRender() {
     const assignee = field(it, 'System.AssignedTo', '');
     if (!assignee) return;
     const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
-    ensurePerson(assignee).completed.push({ item: it, complexity });
+    const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
+    const effort = effortFor(it, assumedByType);
+    const created = field(it, 'System.CreatedDate');
+    const changed = field(it, 'System.ChangedDate');
+    const cycleDays = (created && changed) ? Math.max(0, (new Date(changed) - new Date(created)) / 86400000) : null;
+    ensurePerson(assignee).completed.push({ item: it, complexity, urgency, effort, cycleDays });
   });
   scored.forEach(s => {
     if (s.assignee) ensurePerson(s.assignee).open.push(s);
@@ -1123,6 +1189,127 @@ function computeAndRender() {
   renderCarryover(carryoverItems);
   renderPool(scoredPool);
   renderTestRejected(testRejectedItems, testCaseWindowCount, rejectionRatePct, rejectionRateIsAssumed, reworkEffortPct);
+  renderPerformanceTab(byPerson, lookbackWeeks, wipLimit);
+}
+
+// ---------------------------------------------------------------------
+// Team Performance tab — a single equal-weighted composite score per
+// developer across 5 metrics, computed from the same completed-item and
+// WIP data as the planner. Each metric is min-max scaled 0-100 across
+// this team (so it's a relative read, not an absolute grade), then the
+// 5 scaled metrics are averaged for the composite.
+//   - Effort delivered: total completed-item effort hours this window
+//   - Completion time: average cycle time (Created -> Changed/Closed) in
+//     days, lower is better, so this one is inverted after scaling
+//   - Priority handling: % of completed items that were P1/P2
+//   - Severity handling: % of completed items with a critical severity
+//   - WIP completion: completed / (completed + still-open-WIP)
+// ---------------------------------------------------------------------
+function minMaxScale(values) {
+  const nums = values.filter(v => v != null && !isNaN(v));
+  if (!nums.length) return () => 50; // nothing to compare against
+  const min = Math.min(...nums), max = Math.max(...nums);
+  if (max === min) return (v) => (v == null || isNaN(v)) ? 50 : 100;
+  return (v) => (v == null || isNaN(v)) ? 0 : Math.round(((v - min) / (max - min)) * 1000) / 10;
+}
+function renderPerformanceTab(byPerson, lookbackWeeks, wipLimit) {
+  document.getElementById('perf-lookback-weeks').textContent = lookbackWeeks;
+  const people = Object.values(byPerson).filter(p => p.completed.length > 0 || p.wipCount > 0);
+
+  if (!people.length) {
+    document.getElementById('perf-empty').style.display = 'block';
+    document.getElementById('perf-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('perf-empty').style.display = 'none';
+  document.getElementById('perf-content').style.display = 'block';
+
+  const metrics = people.map(p => {
+    const n = p.completed.length;
+    const effortHours = p.completed.reduce((sum, c) => sum + (c.effort ? c.effort.hours : 0), 0);
+    const cycleTimes = p.completed.map(c => c.cycleDays).filter(v => v != null);
+    const avgCycleDays = cycleTimes.length ? cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length : null;
+    const p1p2Count = p.completed.filter(c => parseLeadingNumber(c.urgency.priorityRaw) != null && parseLeadingNumber(c.urgency.priorityRaw) <= 2).length;
+    const priorityPct = n ? (p1p2Count / n) * 100 : null;
+    const critSeverityCount = p.completed.filter(c => c.urgency.critical).length;
+    const severityPct = n ? (critSeverityCount / n) * 100 : null;
+    const wipTotal = n + (p.wipCount || 0);
+    const wipCompletionPct = wipTotal ? (n / wipTotal) * 100 : null;
+    return { name: p.name, n, effortHours, avgCycleDays, priorityPct, severityPct, wipCompletionPct, wipCount: p.wipCount || 0 };
+  });
+
+  const scaleEffort = minMaxScale(metrics.map(m => m.effortHours));
+  const scaleCycle = minMaxScale(metrics.map(m => m.avgCycleDays));
+  const scalePriority = minMaxScale(metrics.map(m => m.priorityPct));
+  const scaleSeverity = minMaxScale(metrics.map(m => m.severityPct));
+  const scaleWip = minMaxScale(metrics.map(m => m.wipCompletionPct));
+
+  const scored = metrics.map(m => {
+    const effortScore = scaleEffort(m.effortHours);
+    const cycleScoreRaw = scaleCycle(m.avgCycleDays);
+    const cycleScore = m.avgCycleDays == null ? 50 : 100 - cycleScoreRaw; // lower cycle time is better
+    const priorityScore = scalePriority(m.priorityPct);
+    const severityScore = scaleSeverity(m.severityPct);
+    const wipScore = scaleWip(m.wipCompletionPct);
+    const composite = (effortScore + cycleScore + priorityScore + severityScore + wipScore) / 5;
+    return { ...m, effortScore, cycleScore, priorityScore, severityScore, wipScore, composite: Math.round(composite * 10) / 10 };
+  }).sort((a, b) => b.composite - a.composite);
+
+  renderPerfRankChart('chart-perf-rank', scored.map(s => s.name), scored.map(s => s.composite));
+
+  const rankBadge = (i) => {
+    const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    return `<span class="perf-rank-badge ${cls}">${i + 1}</span>`;
+  };
+  const initials = (name) => (name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const pill = (val, suffix) => val == null ? '<span class="perf-metric-pill">n/a</span>' : `<span class="perf-metric-pill">${Math.round(val)}${suffix || ''}</span>`;
+  const scoreBar = (v) => `<div class="perf-score-bar-track"><div class="perf-score-bar-fill" style="width:${Math.max(2, v)}%"></div></div>`;
+
+  document.getElementById('rows-perf-rank').innerHTML = scored.map((s, i) => `
+    <tr>
+      <td>${rankBadge(i)}</td>
+      <td><span class="perf-avatar">${initials(s.name)}</span>${s.name}</td>
+      <td><strong>${s.composite}</strong>${scoreBar(s.composite)}</td>
+      <td>${pill(s.effortHours, 'h')}</td>
+      <td>${s.avgCycleDays == null ? pill(null) : pill(s.avgCycleDays, 'd')}</td>
+      <td>${s.priorityPct == null ? pill(null) : pill(s.priorityPct, '%')}</td>
+      <td>${s.severityPct == null ? pill(null) : pill(s.severityPct, '%')}</td>
+      <td>${s.wipCompletionPct == null ? pill(null) : pill(s.wipCompletionPct, '%')}</td>
+      <td>${s.n}</td>
+    </tr>`).join('');
+}
+
+let perfChart = null;
+function renderPerfRankChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (perfChart) perfChart.destroy();
+  const gradientColors = ['#8f7bf7', '#6a5ff0'];
+  perfChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Composite score', data, backgroundColor: '#6a5ff0', borderRadius: 6, maxBarThickness: 28 }] },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, max: 100, grid: { color: '#2a3046' }, ticks: { color: '#9aa3bd' } },
+        y: { grid: { color: '#2a3046' }, ticks: { color: '#e4e7f2' } },
+      },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+function switchTab(name) {
+  const planner = document.getElementById('tab-planner');
+  const perf = document.getElementById('tab-performance');
+  const btnPlanner = document.getElementById('tabbtn-planner');
+  const btnPerf = document.getElementById('tabbtn-performance');
+  const onPlanner = name === 'planner';
+  planner.style.display = onPlanner ? 'block' : 'none';
+  perf.style.display = onPlanner ? 'none' : 'block';
+  btnPlanner.classList.toggle('active', onPlanner);
+  btnPerf.classList.toggle('active', !onPlanner);
 }
 
 // ---------------------------------------------------------------------
