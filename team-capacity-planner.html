@@ -289,6 +289,7 @@
       <button type="button" onclick="exportSprintPlanCsv()">⬇ Export sprint plan (CSV)</button>
       <span id="export-status" class="plan-toolbar-note">Opens in Excel. Includes the suggested week, sprint check and move/drop actions for every open item.</span>
     </div>
+    <div id="effort-summary" class="plan-toolbar-note" style="margin:-6px 0 14px 0"></div>
     <section id="sec-open" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
         <h2>🎯 P1 / P2 — needs attention</h2>
@@ -1134,6 +1135,16 @@ function computeAndRender() {
   document.getElementById('tab-nav').style.display = 'flex';
   const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
   buildEffortModel(openItems, completedInWindow, assumedByType);
+
+  // Where did each effort figure come from? Shown on the Sprint Planner tab.
+  {
+    const t = { ado: 0, similar: 0, complexity: 0, flat: 0 };
+    openItems.forEach(it => { const e = effortFor(it, assumedByType); if (!e.assumed) t.ado++; else if (e.source === 'similar') t.similar++; else if (e.source === 'complexity') t.complexity++; else t.flat++; });
+    const refs = window._effortModel ? window._effortModel.refCount : 0;
+    document.getElementById('effort-summary').textContent =
+      `Effort sources: ${t.ado} from ADO, ${t.similar} estimated from similar work, ${t.complexity} from complexity${t.flat ? ', ' + t.flat + ' flat fallback' : ''}. The estimator learned from ${refs} item(s) with real hours.` +
+      (refs < 5 ? ' Very few items have recorded hours, so most estimates rest on complexity alone. Recording Completed Work on closed items is what makes them accurate.' : '');
+  }
 
   // Score every open item once.
   const scored = openItems.map(it => {

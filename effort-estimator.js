@@ -124,10 +124,12 @@
       }
       if (!out) {
         const base = baselineFor(type);
-        const label = cfg.complexityFn ? (cfg.complexityFn(title, desc) || {}).label : 'Medium';
-        const mult = label === 'High' ? 2 : label === 'Low' ? 0.5 : 1;
-        out = { hours: clamp(roundHalf(base.hours * mult)), source: 'complexity', confidence: 'low', neighbours: [],
-          basis: `${label || 'Medium'} complexity x ${mult} of the ${base.from} (${Math.round(base.hours * 10) / 10}h)` };
+        const cx = (cfg.complexityFn ? cfg.complexityFn(title, desc) : null) || {};
+        const score = typeof cx.score === 'number' ? cx.score : (cx.label === 'High' ? 7 : cx.label === 'Low' ? 1.5 : 3.5);
+        // continuous scaling so items don't all collapse onto one number: score 3.5 = baseline
+        const factor = Math.max(0.5, Math.min(2.5, 0.5 + score / 7));
+        out = { hours: clamp(roundHalf(base.hours * factor)), source: 'complexity', confidence: 'low', neighbours: [],
+          basis: `complexity score ${Math.round(score * 10) / 10} (${cx.label || 'Medium'}) x ${Math.round(factor * 100) / 100} of the ${base.from} (${Math.round(base.hours * 10) / 10}h)` };
       }
       cache.set(it.id, out);
       return out;

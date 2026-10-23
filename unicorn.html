@@ -449,7 +449,7 @@ function quickComplexity(title, desc) {
   const low = ['typo', 'label', 'wording', 'cosmetic', 'spelling', 'rename', 'minor', 'simple', 'quick fix', 'colour', 'color', 'spacing', 'align'];
   const h = high.filter(k => text.includes(k)).length, l = low.filter(k => text.includes(k)).length;
   const score = 1 + Math.min(3, text.length / 400) + h * 2 - l * 1.5;
-  return { label: score <= 3 ? 'Low' : score <= 6 ? 'Medium' : 'High' };
+  return { score, label: score <= 3 ? 'Low' : score <= 6 ? 'Medium' : 'High' };
 }
 function buildEffortModel(items, assumedByType) {
   const realHours = (it) => {
@@ -798,10 +798,16 @@ function renderBurnup(m, state) {
   });
 }
 
+function effortTallyText(m) {
+  const t = { ado: 0, similar: 0, complexity: 0, flat: 0 };
+  m.live.forEach(x => { if (!x.assumed) t.ado++; else if (x.estSource === 'similar') t.similar++; else if (x.estSource === 'complexity') t.complexity++; else t.flat++; });
+  const refs = window._effortModel ? window._effortModel.refCount : 0;
+  return `Effort sources this sprint: ${t.ado} from ADO, ${t.similar} from similar work, ${t.complexity} from complexity${t.flat ? ', ' + t.flat + ' flat fallback' : ''}; the estimator learned from ${refs} item(s) with real hours.${refs < 5 ? ' Very few items have recorded hours, so most estimates rest on complexity alone. Recording Completed Work on closed items is what makes them accurate.' : ''}`;
+}
 function renderCapacity(m, state) {
   document.getElementById('card-capacity').style.display = 'block';
   document.getElementById('capacity-sub').textContent =
-    `Each developer has ${r1(m.capPerDev)}h this sprint (${state.opts.devHoursPerDay}h × ${m.workingDays} working days). Effort is the real estimate where ADO has one. Where it doesn't, it is estimated from the topic: the closest similar work that has real hours, otherwise a complexity-scaled baseline (hover the badge on any item to see why). Include time off in the hours setting before trusting a single person's bar.`;
+    `Each developer has ${r1(m.capPerDev)}h this sprint (${state.opts.devHoursPerDay}h × ${m.workingDays} working days). Effort is the real estimate where ADO has one. Where it doesn't, it is estimated from the topic: the closest similar work that has real hours, otherwise a complexity-scaled baseline (hover the badge on any item to see why). Include time off in the hours setting before trusting a single person's bar. ${effortTallyText(m)}`;
   const rows = m.devs.map(d => {
     const scale = Math.max(d.capacity, d.load);
     const w = (h) => (scale > 0 ? (h / scale) * 100 : 0).toFixed(1) + '%';
