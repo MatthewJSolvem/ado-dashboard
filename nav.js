@@ -19,6 +19,8 @@ const ADONav = (function () {
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15l2 2 4-4"/></svg>' },
     { key: 'insight', href: 'dev-insight.html', label: 'Dev Insight',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l5-5 4 4 8-8"/><path d="M15 6h6v6"/></svg>' },
+    { key: 'unicorn', href: 'unicorn.html', label: 'Unicorn',
+      ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 5.3L20 9.2l-4.3 3.9L17 19l-5-3-5 3 1.3-5.9L4 9.2l5.8-.9z"/></svg>' },
     { key: 'resource', href: 'resource-review.html', label: 'Resource Review',
       ico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/><path d="M15 3.5a4 4 0 0 1 0 7.6"/></svg>' },
     { key: 'client', href: 'client-investigation.html', label: 'Client Investigation',

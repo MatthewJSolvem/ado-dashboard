@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unicorn</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0c13; --card: #141825; --card2: #10131e; --border: #262b3d; --text: #e7e9f2;
+    --muted: #8b93ad; --accent: #6a5ff0; --accent-2: #8f7bf7;
+    --good: #43d9a3; --good-bg: rgba(67,217,163,0.12);
+    --warn: #f0b450; --warn-bg: rgba(240,180,80,0.12);
+    --bad: #f0606e; --bad-bg: rgba(240,96,110,0.12);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; margin: 0; padding: 0 0 48px 0; }
+  .app-main { max-width: 1240px; margin: 0 auto; padding: 28px 28px 0 28px; }
+  h1 { font-size: 23px; margin-bottom: 4px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
+  .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 13.5px; max-width: 900px; line-height: 1.5; }
+
+  details.config-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6); }
+  details.config-panel > summary { cursor: pointer; list-style: none; padding: 14px 20px; font-weight: 800; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  details.config-panel > summary::-webkit-details-marker { display: none; }
+  details.config-panel > summary::before { content: '▾'; color: var(--muted); font-size: 11px; }
+  details.config-panel:not([open]) > summary::before { transform: rotate(-90deg); }
+  #config-summary-sub { color: var(--accent-2); font-weight: 700; font-size: 12.5px; }
+  .config { padding: 2px 20px 20px 20px; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  input, select, textarea { background: #0e111a; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  button { background: linear-gradient(145deg,var(--accent-2),var(--accent)); color: white; border: none; border-radius: 7px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px -6px rgba(106,95,240,0.7); }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: none; border: 1px solid var(--border); color: var(--muted); box-shadow: none; }
+  button.small { padding: 6px 10px; font-size: 12px; }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffb3ba; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  details.config-details { margin-top: 14px; }
+  details.config-details summary { cursor: pointer; font-size: 12px; color: var(--accent-2); font-weight: 700; }
+  details.config-details .config-grid { margin-top: 12px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .kpi-tile { background: linear-gradient(145deg,#171b29,#12141e); border: 1px solid var(--border); border-left: 3px solid var(--kpi-accent, var(--accent)); border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+  .kpi-label { color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .kpi-value { color: #fff; font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .kpi-sub { color: #6b7490; font-size: 11px; margin-top: 5px; line-height: 1.4; }
+  .kpi-icon { position: absolute; right: 12px; top: 12px; font-size: 18px; opacity: 0.35; }
+
+  .banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; line-height: 1.6; }
+  .banner-bad { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #ffd4d8; }
+  .banner-warn { background: var(--warn-bg); border-left: 4px solid var(--warn); color: #fbe3b5; }
+  .banner-good { background: var(--good-bg); border-left: 4px solid var(--good); color: #c9f5e6; }
+
+  .tab-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; padding-top: 2px; flex-wrap: wrap; align-items: center; }
+  .tab-btn { background: none; border: none; box-shadow: none; color: var(--muted); font-weight: 700; font-size: 13.5px; padding: 12px 16px 11px 16px; cursor: pointer; border-bottom: 3px solid transparent; border-radius: 0; display: flex; align-items: center; gap: 8px; }
+  .tab-btn:hover { color: #fff; }
+  .tab-btn.active { color: #fff; border-bottom-color: var(--accent); }
+  .tab-count { background: var(--bad-bg); color: var(--bad); padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 800; }
+  .tab-count:empty { display: none; }
+  .tab-spacer { flex: 1; }
+
+  .card { background: linear-gradient(180deg,#161a28,#121521); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px -16px rgba(0,0,0,0.6); }
+  .card-title { color: #fff; font-size: 13px; font-weight: 800; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ideal-tag { color: var(--accent-2); font-weight: 700; font-size: 10.5px; text-transform: none; letter-spacing: 0; margin-left: 8px; }
+  .card-sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; line-height: 1.55; max-width: 860px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  .chart-wrap { height: 300px; }
+  .chart-wrap.small { height: 240px; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #74799a; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid #1e2230; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .badge { background: #1e2230; color: var(--accent-2); padding: 2px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge-muted { background: #1e2230; color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 18px !important; font-size: 13px; }
+  a.idlink { color: var(--accent-2); font-weight: 700; text-decoration: none; }
+
+  /* capacity blocks */
+  .cap-row { display: grid; grid-template-columns: 150px 1fr 150px; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #1e2230; }
+  .cap-row:last-child { border-bottom: none; }
+  .cap-name { font-weight: 700; font-size: 13px; color: #fff; }
+  .cap-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #1b1f2e; }
+  .cap-seg { height: 100%; }
+  .cap-meta { font-size: 11.5px; color: var(--muted); text-align: right; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-bottom: 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+  .evict-list { list-style: none; margin: 0; padding: 0; }
+  .evict-list li { padding: 12px 2px; border-bottom: 1px solid #1e2230; font-size: 13px; line-height: 1.6; }
+  .evict-list li:last-child { border-bottom: none; }
+  .ev-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  .person-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .person-card { background: #121521; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .person-card .pn { font-weight: 700; color: #fff; font-size: 13.5px; }
+  .person-card .pm { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .wip-track { background: #1e2230; border-radius: 3px; height: 7px; overflow: hidden; margin-top: 8px; }
+  .wip-fill { height: 100%; background: var(--accent); }
+  .wip-fill.over { background: var(--bad); }
+
+  .timeline { list-style: none; margin: 0; padding: 0 0 0 4px; }
+  .timeline li { position: relative; padding: 0 0 14px 20px; border-left: 2px solid var(--border); font-size: 13px; line-height: 1.5; }
+  .timeline li::before { content: ''; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
+  .timeline .tl-date { color: var(--muted); font-size: 11.5px; display: block; }
+
+  .form-row { display: grid; grid-template-columns: 1fr 110px 140px 2fr auto; gap: 10px; align-items: end; }
+  @media (max-width: 900px) { .form-row { grid-template-columns: 1fr 1fr; } }
+  textarea.copybox { width: 100%; min-height: 78px; resize: vertical; line-height: 1.5; }
+  .seg-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg-toggle button { background: none; border: none; box-shadow: none; border-radius: 0; color: var(--muted); padding: 4px 9px; font-size: 11px; }
+  .seg-toggle button.on-core { background: var(--good-bg); color: var(--good); }
+  .seg-toggle button.on-context { background: var(--warn-bg); color: var(--warn); }
+  .note { color: var(--muted); font-size: 12px; line-height: 1.55; }
+</style>
+</head>
+<body>
+<script>ADONav.render('unicorn');</script>
+<div class="app-main">
+
+  <h1>Unicorn</h1>
+  <div class="subtitle">Protects the sprint from daily churn. It separates planned from unplanned work, shows exactly when scope was added, and turns "P1s, fast-tracked and unrecorded work" into numbers you can take to stakeholders. Built on the five ideals of <em>The Unicorn Project</em>: protect flow, record daily reality, stay blameless, isolate the chaos, and defend the work that matters to customers.</div>
+
+  <details class="config-panel" id="config-panel" open>
+    <summary>⚙ Connection &amp; settings <span id="config-summary-sub"></span></summary>
+    <div class="config">
+      <div style="display:none">
+        <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+        <input type="checkbox" id="remember">
+      </div>
+      <div class="config-grid">
+        <div class="field"><label>Dev Team</label><input id="areaDev" list="ado-team-options" placeholder="e.g. Development V2 - Mark Jones Team"></div>
+        <div class="field"><label>QA Team</label><input id="areaQA" list="ado-team-options"></div>
+        <div class="field"><label>Analysis Team</label><input id="areaAnalysis" list="ado-team-options"></div>
+        <div class="field"><label>Technical Team</label><input id="areaTechnical" list="ado-team-options"></div>
+        <div class="field">
+          <label>Team to analyze</label>
+          <select id="teamChoice"><option value="Dev">Dev</option><option value="QA">QA</option><option value="Analysis">Analysis</option><option value="Technical">Technical</option></select>
+        </div>
+      </div>
+      <datalist id="ado-team-options"></datalist>
+      <div class="actions">
+        <button id="loadBtn" onclick="loadUnicorn()">Analyze current sprint</button>
+        <span id="status"></span>
+      </div>
+      <details class="config-details">
+        <summary>Settings</summary>
+        <div class="config-grid">
+          <div class="field"><label>Work item types (blank = all)</label><input id="workItemTypes" value="Bug, Task"></div>
+          <div class="field"><label>Unplanned-work buffer (% of capacity)</label><input id="bufferPct" type="number" value="30" min="0" max="80"></div>
+          <div class="field"><label>Planning grace (hours after sprint start)</label><input id="graceHours" type="number" value="24" min="0" max="120"></div>
+          <div class="field"><label>Productive hours / day / dev</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
+          <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
+          <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
+          <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
+          <div class="field"><label>Assumed effort — Bug (h)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Assumed effort — Task (h)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Past sprints for history</label><input id="historySprints" type="number" value="6" min="2" max="10"></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <div id="error"></div>
+
+  <div id="kpi-wrap" style="display:none">
+    <div id="banners"></div>
+    <div class="kpi-row" id="kpi-row"></div>
+  </div>
+
+  <nav class="tab-nav" id="tab-nav" style="display:none">
+    <button type="button" class="tab-btn active" data-tab="flow" onclick="showTab('flow')">🌊 Protect flow <span class="tab-count" id="tab-count-flow"></span></button>
+    <button type="button" class="tab-btn" data-tab="record" onclick="showTab('record')">📝 Record the unrecorded <span class="tab-count" id="tab-count-record"></span></button>
+    <button type="button" class="tab-btn" data-tab="value" onclick="showTab('value')">🛡 Isolate &amp; defend</button>
+    <button type="button" class="tab-btn" data-tab="history" onclick="showTab('history')">📈 History &amp; scope events</button>
+    <span class="tab-spacer"></span>
+    <button type="button" class="ghost small" onclick="exportDisruptionCsv()">⬇ Export disruption report (CSV)</button>
+  </nav>
+  <div id="export-status" class="note" style="margin:-10px 0 14px 0"></div>
+
+  <!-- ============ FLOW (Ideal 2: focus, flow, joy) ============ -->
+  <div class="tab-panel" id="tab-flow" data-tab="flow">
+    <div class="card" id="card-burnup" style="display:none">
+      <div class="card-title">Sprint burnup — where scope was added <span class="ideal-tag">Ideal 4 · blameless view</span></div>
+      <div class="card-sub" id="burnup-sub"></div>
+      <div class="chart-wrap"><canvas id="chart-burnup"></canvas></div>
+    </div>
+
+    <div class="card" id="card-capacity" style="display:none">
+      <div class="card-title">Capacity blocks per developer <span class="ideal-tag">Ideal 2 · focus &amp; flow</span></div>
+      <div class="card-sub" id="capacity-sub"></div>
+      <div class="legend">
+        <span><i style="background:#6a5ff0"></i>Planned</span><span><i style="background:#f0b450"></i>Unplanned (recorded)</span>
+        <span><i style="background:#f0606e"></i>Unrecorded (logged by hand)</span><span><i style="background:#1b1f2e;border:1px solid #333a52"></i>Free</span>
+      </div>
+      <div id="cap-rows"></div>
+    </div>
+
+    <div class="card" id="card-evict" style="display:none">
+      <div class="card-title">Pull system — what to evict <span class="ideal-tag">Ideal 2 · WIP limit</span></div>
+      <div class="card-sub">Work is never stacked on top of a full sprint. When someone is over capacity because of unplanned work, an equal amount of planned, not-yet-started, lower-priority work should leave the sprint. These are suggestions for the conversation with your PM; nothing changes in ADO.</div>
+      <ul class="evict-list" id="evict-list"></ul>
+    </div>
+
+    <div class="card" id="card-wip" style="display:none">
+      <div class="card-title">Work in progress per person <span class="ideal-tag">Ideal 2 · context switching</span></div>
+      <div class="card-sub" id="wip-sub"></div>
+      <div class="person-grid" id="wip-grid"></div>
+    </div>
+  </div>
+
+  <!-- ============ RECORD (Ideal 3: improvement of daily work) ============ -->
+  <div class="tab-panel" id="tab-record" data-tab="record" style="display:none">
+    <div class="card">
+      <div class="card-title">Pull the andon cord <span class="ideal-tag">Ideal 3 · improvement of daily work</span></div>
+      <div class="card-sub">When work arrives by chat, shoulder tap or an off-record meeting, the developer has the mandate to stop and ask for a ticket before starting. Fast-tracked work is still recorded work. Tag it <strong>Origin: Unplanned</strong> or <strong>Fast-Track</strong> (this page recognises either tag) so the volume becomes data.</div>
+      <textarea class="copybox" id="andon-text" readonly>I can't start this until a ticket exists, because we need to record our daily reality. Please log it in ADO with the tag "Origin: Unplanned" (or "Fast-Track"), who asked and why. If the sprint is already full, tell me which planned item moves out to make room.</textarea>
+      <div class="actions"><button type="button" class="small" onclick="copyAndon()">Copy message</button><span id="andon-status" class="note"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Log unrecorded work <span class="ideal-tag">counts against the buffer</span></div>
+      <div class="card-sub">Work with no ticket cannot be seen in ADO. Log it here the moment it lands so it shows up in capacity and the buffer. Entries are saved in this browser only (they are not written to ADO), so export the disruption report to share them.</div>
+      <div class="form-row">
+        <div class="field"><label>Developer</label><input id="ur-dev" list="dev-options" placeholder="Name"></div>
+        <div class="field"><label>Hours</label><input id="ur-hours" type="number" min="0.25" step="0.25" value="1"></div>
+        <div class="field"><label>Date</label><input id="ur-date" type="date"></div>
+        <div class="field"><label>What was it / who asked?</label><input id="ur-note" placeholder="e.g. Quick data fix requested by support"></div>
+        <div class="field"><label>Type</label><select id="ur-cat"><option value="Core">Core (customer value)</option><option value="Context">Context (internal / support)</option></select></div>
+      </div>
+      <datalist id="dev-options"></datalist>
+      <div class="actions"><button type="button" onclick="addUnrecorded()">Add entry</button><span id="ur-status" class="note"></span></div>
+      <div class="table-wrap" style="margin-top:14px"><table>
+        <thead><tr><th>Date</th><th>Developer</th><th>Hours</th><th>Type</th><th>Note</th><th></th></tr></thead>
+        <tbody id="ur-rows"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Late-added items without an origin tag</div>
+      <div class="card-sub" id="taggap-sub"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Added</th><th>Priority</th><th>Effort (h)</th></tr></thead>
+        <tbody id="taggap-rows"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ============ VALUE (Ideals 1 + 5) ============ -->
+  <div class="tab-panel" id="tab-value" data-tab="value" style="display:none">
+    <div class="card">
+      <div class="card-title">Firefighter rotation <span class="ideal-tag">Ideal 1 · locality &amp; simplicity</span></div>
+      <div class="card-sub">Isolate the chaos: one developer per sprint takes every fast-tracked and incoming P1 request, and the rest of the team keeps their sprint goals. The suggested next firefighter is whoever has absorbed the least unplanned work so far this sprint.</div>
+      <div class="two-col">
+        <div>
+          <div class="field" style="max-width:320px"><label>This sprint's firefighter</label><select id="ff-select" onchange="setFirefighter(this.value)"></select></div>
+          <div id="ff-insulation" style="margin-top:14px"></div>
+        </div>
+        <div>
+          <div class="kpi-label">Unplanned work absorbed per developer (h)</div>
+          <div id="ff-bars" style="margin-top:8px"></div>
+          <div class="note" id="ff-next" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Core vs context work <span class="ideal-tag">Ideal 5 · customer focus</span></div>
+      <div class="card-sub" id="cc-sub"></div>
+      <div class="two-col">
+        <div class="chart-wrap small"><canvas id="chart-cc"></canvas></div>
+        <div id="cc-summary"></div>
+      </div>
+      <div class="table-wrap" style="margin-top:14px"><table>
+        <thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Effort (h)</th><th>Classified as</th></tr></thead>
+        <tbody id="cc-rows"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="tab-panel" id="tab-history" data-tab="history" style="display:none">
+    <div class="card">
+      <div class="card-title">Unplanned share by sprint <span class="ideal-tag">your measurement frame</span></div>
+      <div class="card-sub" id="history-sub"></div>
+      <div class="chart-wrap small"><canvas id="chart-history"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Scope events this sprint</div>
+      <div class="card-sub">Every item added after planning, oldest first. These are the vertical jumps in the burnup.</div>
+      <ul class="timeline" id="scope-events"></ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+let workItemBaseUrl = '';
+let priorityFieldRef = null, severityFieldRef = null, stateChangeFieldRef = null;
+let typeStateMapGlobal = {};
+let lastState = null;
+let charts = {};
+
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => { p.style.display = (p.dataset.tab === name) ? 'block' : 'none'; });
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.toggle('active', b.dataset.tab === name); });
+  storage.set('ado-unicorn-activetab', name);
+}
+(function restoreTab() {
+  const saved = storage.get('ado-unicorn-activetab');
+  if (saved && document.querySelector(`.tab-panel[data-tab="${saved}"]`)) showTab(saved);
+})();
+
+// ---- restore the same team names / options the Dev Planner saves, so nothing is re-typed ----
+(function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (raw) { try { const c = JSON.parse(raw); document.getElementById('org').value = c.org || ''; document.getElementById('project').value = c.project || ''; document.getElementById('team').value = c.team || ''; if (c.org || c.project || c.team) document.getElementById('remember').checked = true; } catch (e) {} }
+  const names = storage.get('ado-capacity-teamnames');
+  if (names) { try { const a = JSON.parse(names); document.getElementById('areaDev').value = a.dev || ''; document.getElementById('areaQA').value = a.qa || ''; document.getElementById('areaAnalysis').value = a.analysis || ''; document.getElementById('areaTechnical').value = a.technical || ''; } catch (e) {} }
+  const choice = storage.get('ado-capacity-teamchoice');
+  if (choice) document.getElementById('teamChoice').value = choice;
+  const planner = storage.get('ado-capacity-options');
+  if (planner) { try { const o = JSON.parse(planner);
+    ['devHoursPerDay', 'wipLimit', 'criticalPriority', 'criticalSeverityKeyword', 'assumedEffortBug', 'assumedEffortTask'].forEach(k => { if (o[k] != null && o[k] !== '') document.getElementById(k).value = o[k]; });
+    if (o.workItemTypes != null) document.getElementById('workItemTypes').value = o.workItemTypes;
+  } catch (e) {} }
+  const mine = storage.get('ado-unicorn-options');
+  if (mine) { try { const o = JSON.parse(mine); ['bufferPct', 'graceHours', 'historySprints'].forEach(k => { if (o[k] != null && o[k] !== '') document.getElementById(k).value = o[k]; }); } catch (e) {} }
+})();
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+})();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+function showError(html) { ADOLoader.hide(); const el = document.getElementById('error'); el.innerHTML = html; el.style.display = 'block'; }
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try { const j = await res.json(); return j.message || JSON.stringify(j); } catch (e) { try { return await res.text(); } catch (e2) { return ''; } }
+}
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } }); } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try { res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch (err) { throw new Error('CORS_OR_NETWORK'); }
+  if (!res.ok) { const detail = await readAdoErrorDetail(res); const e = new Error(`HTTP_${res.status}`); e.detail = detail; throw e; }
+  return res.json();
+}
+async function wiql(projectBase, queryText, label) {
+  try { return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText }); }
+  catch (err) { if (err.message && err.message.startsWith('HTTP_')) { err.label = label; err.query = queryText; } throw err; }
+}
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: ids.slice(i, i + 200), fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() { while (idx < items.length) { const cur = idx++; try { results[cur] = await worker(items[cur], cur); } catch (e) { results[cur] = null; } } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+async function discoverFieldReferenceName(projectBase, workItemType, candidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = candidates.map(c => c.toLowerCase());
+    const m = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return m ? m.referenceName : null;
+  } catch (e) { return null; }
+}
+function field(item, name, def = '') {
+  if (!name) return def;
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') return val.displayName || val.uniqueName || val.name || def;
+  const m = String(val).match(/^(.*?)\s*<.*>$/);
+  return m ? m[1].trim() : String(val);
+}
+function parseLeadingNumber(str) { const m = String(str || '').match(/(\d+)/); return m ? parseInt(m[1], 10) : null; }
+const LITERAL_COMPLETED_STATES = ['closed', 'done'];
+const LITERAL_REMOVED_STATES = ['removed'];
+function resolveCategory(map, wit, state) {
+  const s = (state || '').toLowerCase();
+  if (LITERAL_COMPLETED_STATES.includes(s)) return 'Completed';
+  if (LITERAL_REMOVED_STATES.includes(s)) return 'Removed';
+  return (map[wit] || {})[state] || '';
+}
+function buildAreaClause(tfv) {
+  if (!tfv || !tfv.values || !tfv.values.length) return null;
+  return '(' + tfv.values.map(v => { const e = v.value.replace(/'/g, "''"); return v.includeChildren ? `[System.AreaPath] UNDER '${e}'` : `[System.AreaPath] = '${e}'`; }).join(' OR ') + ')';
+}
+function effortFor(it, assumedByType) {
+  const rem = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.RemainingWork', ''));
+  if (!isNaN(rem) && rem > 0) return { hours: rem, assumed: false };
+  const orig = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.OriginalEstimate', ''));
+  if (!isNaN(orig) && orig > 0) return { hours: orig, assumed: false };
+  const wit = field(it, 'System.WorkItemType');
+  return { hours: (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4, assumed: true };
+}
+function classifyUrgency(it, criticalPriority, kw) {
+  const priorityRaw = field(it, priorityFieldRef, ''), severityRaw = field(it, severityFieldRef, '');
+  const pn = parseLeadingNumber(priorityRaw), sn = parseLeadingNumber(severityRaw);
+  const pw = pn != null ? Math.max(0, 5 - pn) : 2, sw = sn != null ? Math.max(0, 5 - sn) : 2;
+  const sevWord = kw && String(severityRaw).toLowerCase().includes(kw.toLowerCase());
+  const critical = (pn != null && pn <= criticalPriority) || sevWord;
+  return { priorityRaw, severityRaw, priorityNum: pn, urgencyScore: pw * 2 + sw * 1.5, critical };
+}
+function csvCell(v) {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(v);
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+const ORIGIN_TAG_RE = /(unplanned|fast[\s_-]?track)/i;
+const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const fmtDay = (d) => d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+const r1 = (n) => Math.round(n * 10) / 10;
+const lastSeg = (p) => (p || '').split('\\').pop();
+
+// ---------------------------------------------------------------------
+// Load: current-sprint items (every state, so completed and removed work
+// is visible), their iteration history (to find when each item entered
+// the sprint), and the last few past sprints for the trend.
+// ---------------------------------------------------------------------
+const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate',
+  'System.IterationPath', 'System.Tags', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork'];
+
+async function loadUnicorn() {
+  clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const teamChoice = document.getElementById('teamChoice').value;
+  const teamMap = { Dev: document.getElementById('areaDev').value.trim(), QA: document.getElementById('areaQA').value.trim(), Analysis: document.getElementById('areaAnalysis').value.trim(), Technical: document.getElementById('areaTechnical').value.trim() };
+  const teamName = teamMap[teamChoice];
+  const opts = readOptions();
+  if (!org || !project || !pat || !teamName) { showError('Fill in organization, project, PAT, and the team name for the chosen team first.'); return; }
+  storage.set('ado-capacity-teamchoice', teamChoice);
+  storage.set('ado-unicorn-options', JSON.stringify({ bufferPct: opts.bufferPct, graceHours: opts.graceHours, historySprints: opts.historySprints }));
+
+  const btn = document.getElementById('loadBtn');
+  btn.disabled = true;
+  const base = `https://dev.azure.com/${org}`, projectBase = `${base}/${project}`, teamBase = `${projectBase}/${encodeURIComponent(teamName)}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const sd = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(sd.value.map(s => [s.name, s.category]));
+    }
+    typeStateMapGlobal = typeStateMap;
+
+    setStatus('Looking up fields...');
+    priorityFieldRef = null; severityFieldRef = null; stateChangeFieldRef = null;
+    for (const t of witTypes) {
+      if (!priorityFieldRef) priorityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Priority']);
+      if (!severityFieldRef) severityFieldRef = await discoverFieldReferenceName(projectBase, t, ['Severity']);
+      if (!stateChangeFieldRef) stateChangeFieldRef = await discoverFieldReferenceName(projectBase, t, ['State Change Date']);
+      if (priorityFieldRef && severityFieldRef && stateChangeFieldRef) break;
+    }
+    const fields = FIELDS.slice();
+    [priorityFieldRef, severityFieldRef, stateChangeFieldRef].forEach(f => { if (f) fields.push(f); });
+
+    setStatus('Finding the current sprint...');
+    let tfv;
+    try { tfv = await adoGet(`${teamBase}/_apis/work/teamsettings/teamfieldvalues?api-version=7.1`); }
+    catch (e) { showError(`Couldn't find team "${esc(teamName)}" — check the exact team name (Project Settings → Teams).`); setStatus(''); btn.disabled = false; return; }
+    const areaClause = buildAreaClause(tfv);
+    if (!areaClause) { showError(`Team "${esc(teamName)}" has no area path configured.`); setStatus(''); btn.disabled = false; return; }
+    const iterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
+    const now = new Date();
+    const all = iterData.value || [];
+    const currentIteration = all.find(it => it.attributes && it.attributes.startDate && it.attributes.finishDate && new Date(it.attributes.startDate) <= now && new Date(it.attributes.finishDate) >= now) || null;
+    if (!currentIteration) { showError('No current sprint found for this team — set the sprint dates in ADO (Project Settings → Team configuration → Iterations).'); setStatus(''); btn.disabled = false; return; }
+    const pastIterations = all.filter(it => it.attributes && it.attributes.finishDate && new Date(it.attributes.finishDate) < now)
+      .sort((a, b) => new Date(a.attributes.finishDate) - new Date(b.attributes.finishDate)).slice(-opts.historySprints);
+
+    const typeClause = opts.workItemTypes.length ? `AND [System.WorkItemType] IN (${opts.workItemTypes.map(t => `'${t.replace(/'/g, "''")}'`).join(',')})` : '';
+    setStatus('Fetching sprint items...');
+    const w = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}' AND ${areaClause} ${typeClause}
+      AND [System.IterationPath] = '${currentIteration.path.replace(/'/g, "''")}' ORDER BY [System.CreatedDate] ASC`, 'Current sprint items');
+    const sprintItems = await getItems(base, w.workItems.map(x => x.id), fields);
+
+    setStatus(`Checking when ${sprintItems.length} item(s) entered the sprint...`);
+    const CAP = 150;
+    const toCheck = sprintItems.slice(0, CAP);
+    const addedResults = await mapWithConcurrency(toCheck, 5, async (it) => {
+      const updates = await adoGet(`${base}/_apis/wit/workitems/${it.id}/updates?api-version=7.1`);
+      const moves = (updates.value || []).filter(u => u.fields && u.fields['System.IterationPath'] && u.fields['System.IterationPath'].newValue === currentIteration.path);
+      const last = moves[moves.length - 1];
+      if (!last) return null;
+      const cd = last.fields['System.ChangedDate'] && last.fields['System.ChangedDate'].newValue;
+      if (cd) return cd;
+      if (last.revisedDate && new Date(last.revisedDate).getFullYear() < 3000) return last.revisedDate;
+      return null;
+    });
+    const addedMap = {};
+    sprintItems.forEach((it, i) => {
+      const fromHistory = i < CAP ? addedResults[i] : null;
+      addedMap[it.id] = { date: fromHistory || field(it, 'System.CreatedDate'), approx: !fromHistory };
+    });
+
+    let historyItems = [];
+    if (pastIterations.length) {
+      setStatus('Reading past sprints for the trend...');
+      const paths = pastIterations.map(it => `'${it.path.replace(/'/g, "''")}'`).join(',');
+      const hw = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}' AND ${areaClause} ${typeClause}
+        AND [System.IterationPath] IN (${paths}) ORDER BY [System.IterationPath] ASC`, 'Past sprint items');
+      historyItems = await getItems(base, hw.workItems.map(x => x.id), fields);
+    }
+
+    lastState = { teamChoice, teamName, opts, currentIteration, pastIterations, sprintItems, addedMap, historyItems, loadedAt: new Date().toISOString() };
+    setStatus('Analysing...');
+    computeAndRender();
+    document.getElementById('config-summary-sub').textContent = `— ${teamName} (${teamChoice}) · ${currentIteration.name}`;
+    document.getElementById('config-panel').open = false;
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') showError('Blocked before reaching Azure DevOps — likely a CORS restriction from ADO\'s server.');
+    else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') showError('Authentication failed — check the PAT has Work Items (Read) scope.');
+    else if (err.message && err.message.startsWith('HTTP_')) showError(`<strong>${esc(err.message.replace('HTTP_', 'HTTP '))}.</strong><br>${err.label ? '<strong>Step:</strong> ' + esc(err.label) + '<br>' : ''}${err.detail ? '<strong>Azure DevOps said:</strong> ' + esc(err.detail) : ''}`);
+    else showError('Something went wrong: ' + esc(err.message));
+    setStatus('');
+  } finally { btn.disabled = false; }
+}
+function readOptions() {
+  const num = (id, def, min) => Math.max(min, parseFloat(document.getElementById(id).value) || def);
+  return {
+    workItemTypes: document.getElementById('workItemTypes').value.split(',').map(t => t.trim()).filter(Boolean),
+    bufferPct: Math.min(80, Math.max(0, parseFloat(document.getElementById('bufferPct').value) || 0)),
+    graceHours: Math.max(0, parseFloat(document.getElementById('graceHours').value) || 0),
+    devHoursPerDay: num('devHoursPerDay', 6, 0.5), wipLimit: Math.max(1, parseInt(document.getElementById('wipLimit').value, 10) || 3),
+    criticalPriority: parseInt(document.getElementById('criticalPriority').value, 10) || 1,
+    criticalSeverityKeyword: document.getElementById('criticalSeverityKeyword').value.trim(),
+    assumedEffortBug: num('assumedEffortBug', 4, 0.5), assumedEffortTask: num('assumedEffortTask', 4, 0.5),
+    historySprints: Math.min(10, Math.max(2, parseInt(document.getElementById('historySprints').value, 10) || 6)),
+  };
+}
+
+// ---------------------------------------------------------------------
+// Manual state kept in this browser: the unrecorded-work log, core/context
+// overrides, and which developer is this sprint's firefighter.
+// ---------------------------------------------------------------------
+function readJson(key, def) { try { const v = JSON.parse(storage.get(key) || ''); return v == null ? def : v; } catch (e) { return def; } }
+const getLog = () => readJson('ado-unicorn-unrecorded', []);
+const getOverrides = () => readJson('ado-unicorn-cc-overrides', {});
+const ffKey = () => `ado-unicorn-firefighter-${lastState ? lastState.teamName + '-' + lastState.currentIteration.path : ''}`;
+
+// ---------------------------------------------------------------------
+// The model: planned vs unplanned, capacity, buffer, evictions, rotation.
+// ---------------------------------------------------------------------
+function workingDaysBetween(start, end) {
+  let n = 0;
+  for (let d = dayStart(start); d <= end; d = new Date(d.getTime() + 86400000)) { const dow = d.getDay(); if (dow !== 0 && dow !== 6) n++; }
+  return Math.max(1, n);
+}
+function buildModel(state, log, overrides) {
+  const o = state.opts;
+  const assumedByType = { Bug: o.assumedEffortBug, Task: o.assumedEffortTask, _default: o.assumedEffortBug };
+  const it0 = state.currentIteration;
+  const start = new Date(it0.attributes.startDate), end = new Date(it0.attributes.finishDate);
+  const graceEnd = new Date(start.getTime() + o.graceHours * 3600000);
+  const workingDays = workingDaysBetween(start, end);
+  const capPerDev = o.devHoursPerDay * workingDays;
+
+  const items = state.sprintItems.map(it => {
+    const cat = resolveCategory(typeStateMapGlobal, field(it, 'System.WorkItemType'), field(it, 'System.State'));
+    const eff = effortFor(it, assumedByType);
+    const urgency = classifyUrgency(it, o.criticalPriority, o.criticalSeverityKeyword);
+    const added = state.addedMap[it.id] || { date: field(it, 'System.CreatedDate'), approx: true };
+    const addedDate = added.date ? new Date(added.date) : start;
+    const tags = field(it, 'System.Tags', '');
+    const tagFlag = ORIGIN_TAG_RE.test(tags);
+    const late = addedDate > graceEnd;
+    const ccTag = /\bcontext\b/i.test(tags) ? 'Context' : (/\bcore\b/i.test(tags) ? 'Core' : null);
+    const stateChange = stateChangeFieldRef ? field(it, stateChangeFieldRef, '') : '';
+    const completedDate = cat === 'Completed' ? new Date(stateChange || field(it, 'System.ChangedDate')) : null;
+    const unplanned = tagFlag || late;
+    const auto = urgency.critical ? 'Core' : 'Context';
+    return {
+      item: it, id: it.id, assignee: field(it, 'System.AssignedTo', '') || null, cat, hours: eff.hours, assumed: eff.assumed, urgency, tags, tagFlag, late,
+      unplanned, why: tagFlag ? 'Tagged ' + (tags.match(ORIGIN_TAG_RE) || [''])[0] : (late ? 'Added after planning' : ''),
+      addedDate, addedApprox: added.approx, completedDate, removed: cat === 'Removed', done: cat === 'Completed',
+      cc: overrides[it.id] || ccTag || auto, ccSource: overrides[it.id] ? 'manual' : (ccTag ? 'tag' : 'auto'),
+    };
+  });
+  const live = items.filter(x => !x.removed);
+  const planned = live.filter(x => !x.unplanned), unplanned = live.filter(x => x.unplanned);
+  const removed = items.filter(x => x.removed);
+
+  // unrecorded work logged by hand, inside the sprint window and for this team
+  const logIn = log.filter(e => e.team === state.teamName && e.date && new Date(e.date + 'T12:00:00') >= dayStart(start) && new Date(e.date + 'T12:00:00') <= end);
+
+  const devNames = [...new Set([...items.map(x => x.assignee).filter(Boolean), ...logIn.map(e => e.dev).filter(Boolean)])].sort();
+  const devs = devNames.map(name => {
+    const mine = live.filter(x => x.assignee === name);
+    const plannedH = mine.filter(x => !x.unplanned).reduce((s, x) => s + x.hours, 0);
+    const unplannedH = mine.filter(x => x.unplanned).reduce((s, x) => s + x.hours, 0);
+    const unrecH = logIn.filter(e => e.dev === name).reduce((s, e) => s + (Number(e.hours) || 0), 0);
+    const load = plannedH + unplannedH + unrecH;
+    const wip = mine.filter(x => x.cat === 'InProgress').length;
+    return { name, plannedH, unplannedH, unrecH, load, capacity: capPerDev, over: Math.max(0, load - capPerDev), free: Math.max(0, capPerDev - load), wip, absorbed: unplannedH + unrecH };
+  });
+
+  // pull system: when over capacity, evict equal planned, not-started, lower-priority work
+  const evictions = [];
+  devs.filter(d => d.over > 0).forEach(d => {
+    const unplannedOpen = unplanned.filter(x => x.assignee === d.name && !x.done);
+    const candidates = planned.filter(x => x.assignee === d.name && !x.done && x.cat !== 'InProgress' && !x.urgency.critical && !(x.urgency.priorityNum != null && x.urgency.priorityNum <= 2))
+      .sort((a, b) => a.urgency.urgencyScore - b.urgency.urgencyScore);
+    const pick = []; let freed = 0;
+    for (const c of candidates) { if (freed >= d.over) break; pick.push(c); freed += c.hours; }
+    evictions.push({ dev: d.name, over: d.over, unplannedOpen, evict: pick, freed, shortfall: Math.max(0, d.over - freed) });
+  });
+
+  const plannedH = planned.reduce((s, x) => s + x.hours, 0), unplannedH = unplanned.reduce((s, x) => s + x.hours, 0);
+  const unrecH = logIn.reduce((s, e) => s + (Number(e.hours) || 0), 0);
+  const capacityTotal = capPerDev * Math.max(1, devs.length);
+  const bufferH = capacityTotal * (o.bufferPct / 100);
+  const disruptionH = unplannedH + unrecH;
+  const totalWork = plannedH + disruptionH;
+
+  // burnup: scope line steps up whenever work is added; completed line climbs as work closes
+  const today = new Date();
+  const lastDay = dayStart(today < end ? today : end);
+  const totalDays = Math.max(1, Math.round((dayStart(end) - dayStart(start)) / 86400000) + 1);
+  const series = [];
+  const committed = plannedH;
+  for (let i = 0, d = dayStart(start); d <= lastDay; i++, d = new Date(d.getTime() + 86400000)) {
+    const eod = new Date(d.getTime() + 86399999);
+    // planned work is in scope from day one; unplanned work only from the day it arrived
+    const scope = live.filter(x => !x.unplanned || x.addedDate.getTime() <= eod.getTime()).reduce((s, x) => s + x.hours, 0);
+    const done = live.filter(x => x.done && x.completedDate && x.completedDate.getTime() <= eod.getTime()).reduce((s, x) => s + x.hours, 0);
+    series.push({ label: fmtDay(d), scope, done, ideal: totalDays > 1 ? committed * (i / (totalDays - 1)) : committed, committed });
+  }
+
+  // unplanned share per past sprint (lower bound: items that rolled into a later sprint are not counted)
+  const history = state.pastIterations.map(pi => {
+    const pStart = new Date(pi.attributes.startDate), pGrace = new Date(pStart.getTime() + o.graceHours * 3600000);
+    const rows = state.historyItems.filter(h => field(h, 'System.IterationPath') === pi.path && resolveCategory(typeStateMapGlobal, field(h, 'System.WorkItemType'), field(h, 'System.State')) !== 'Removed');
+    const hours = rows.map(h => ({ h: effortFor(h, assumedByType).hours, late: ORIGIN_TAG_RE.test(field(h, 'System.Tags', '')) || new Date(field(h, 'System.CreatedDate')) > pGrace }));
+    const total = hours.reduce((s, x) => s + x.h, 0), lateH = hours.filter(x => x.late).reduce((s, x) => s + x.h, 0);
+    return { name: pi.name, count: rows.length, total, lateH, pct: total > 0 ? (lateH / total) * 100 : null };
+  });
+  const histWith = history.filter(h => h.pct != null);
+  const histAvg = histWith.length ? histWith.reduce((s, h) => s + h.pct, 0) / histWith.length : null;
+
+  // firefighter rotation
+  const absorbedSorted = devs.slice().sort((a, b) => a.absorbed - b.absorbed || a.name.localeCompare(b.name));
+  const ffName = storage.get(ffKey()) || '';
+  const ffAbsorbed = devs.find(d => d.name === ffName);
+  const totalAbsorbed = devs.reduce((s, d) => s + d.absorbed, 0);
+
+  // core vs context across recorded unplanned items plus the manual log
+  const ccH = { Core: 0, Context: 0 };
+  unplanned.forEach(x => { ccH[x.cc] += x.hours; });
+  logIn.forEach(e => { ccH[e.cat === 'Core' ? 'Core' : 'Context'] += Number(e.hours) || 0; });
+
+  const tagGap = unplanned.filter(x => x.late && !x.tagFlag);
+  return { start, end, workingDays, capPerDev, items, live, planned, unplanned, removed, logIn, devs, evictions, plannedH, unplannedH, unrecH, capacityTotal, bufferH,
+    disruptionH, totalWork, series, committed, history, histAvg, absorbedSorted, ffName, ffAbsorbed, totalAbsorbed, ccH, tagGap, assumedByType };
+}
+
+// ---------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------
+function idLink(x) { return workItemBaseUrl ? `<a class="idlink" href="${workItemBaseUrl}${x.id}" target="_blank" rel="noopener">#${x.id}</a>` : `<span class="idlink">#${x.id}</span>`; }
+function chartDefaults() { if (typeof Chart === 'undefined') return false; Chart.defaults.color = '#8b93ad'; Chart.defaults.borderColor = '#262b3d'; return true; }
+function drawChart(id, config) { if (!chartDefaults()) return; const c = document.getElementById(id); if (!c) return; if (charts[id]) charts[id].destroy(); charts[id] = new Chart(c, config); }
+
+function computeAndRender() {
+  const state = lastState;
+  if (!state) return;
+  const model = buildModel(state, getLog(), getOverrides());
+  window._model = model;
+  document.getElementById('kpi-wrap').style.display = 'block';
+  document.getElementById('tab-nav').style.display = 'flex';
+  renderKpis(model, state);
+  renderBurnup(model, state);
+  renderCapacity(model, state);
+  renderEvictions(model);
+  renderWip(model, state);
+  renderRecord(model);
+  renderValue(model);
+  renderHistory(model);
+  document.getElementById('tab-count-flow').textContent = model.evictions.length ? String(model.evictions.length) : '';
+  document.getElementById('tab-count-record').textContent = model.tagGap.length ? String(model.tagGap.length) : '';
+}
+
+function renderKpis(m, state) {
+  const o = state.opts;
+  const pct = m.totalWork > 0 ? (m.disruptionH / m.totalWork) * 100 : 0;
+  const bufferLeft = m.bufferH - m.disruptionH;
+  const overDevs = m.devs.filter(d => d.over > 0).length;
+  const wipOver = m.devs.filter(d => d.wip > o.wipLimit).length;
+  const tier = (bad, warn) => bad ? '#f0606e' : (warn ? '#f0b450' : '#43d9a3');
+  const banners = [];
+  if (m.bufferH > 0 && bufferLeft <= 0) banners.push(`<div class="banner banner-bad"><strong>The unplanned-work buffer is spent</strong> (${r1(m.disruptionH)}h of unplanned work against a ${r1(m.bufferH)}h buffer). Any further fast-tracked item means trading out planned work. Sit down with the PM and ask which planned item they want later, because going over capacity is an unfair move on the team.</div>`);
+  if (overDevs) banners.push(`<div class="banner banner-warn"><strong>${overDevs} developer${overDevs > 1 ? 's are' : ' is'} over capacity</strong> this sprint. See "Pull system" for what to evict.</div>`);
+  if (!banners.length) banners.push('<div class="banner banner-good">The sprint is within capacity and the buffer is holding.</div>');
+  document.getElementById('banners').innerHTML = banners.join('');
+  const tiles = [
+    { label: 'Unplanned share', value: r1(pct) + '%', sub: `${r1(m.disruptionH)}h of ${r1(m.totalWork)}h this sprint`, icon: '🌪', accent: tier(pct > 40, pct > 20) },
+    { label: 'Scope added since planning', value: m.unplanned.length, sub: `${r1(m.unplannedH)}h across ${m.unplanned.length} item(s)`, icon: '➕', accent: tier(m.unplanned.length > 5, m.unplanned.length > 0) },
+    { label: 'Buffer remaining', value: r1(Math.max(0, bufferLeft)) + 'h', sub: `${o.bufferPct}% of ${r1(m.capacityTotal)}h capacity = ${r1(m.bufferH)}h`, icon: '🛟', accent: tier(bufferLeft <= 0, bufferLeft < m.bufferH * 0.3) },
+    { label: 'Unrecorded work logged', value: r1(m.unrecH) + 'h', sub: `${m.logIn.length} entr${m.logIn.length === 1 ? 'y' : 'ies'} this sprint`, icon: '👻', accent: m.unrecH > 0 ? '#f0b450' : '#43d9a3' },
+    { label: 'Over capacity', value: overDevs, sub: 'developers', icon: '⚖', accent: tier(overDevs > 0, false) },
+    { label: 'Over WIP limit', value: wipOver, sub: `limit ${o.wipLimit} in progress`, icon: '🔀', accent: tier(wipOver > 0, false) },
+    { label: 'Removed / evicted', value: m.removed.length, sub: 'items taken out of the sprint', icon: '🗑', accent: '#6a5ff0' },
+  ];
+  document.getElementById('kpi-row').innerHTML = tiles.map(t => `<div class="kpi-tile" style="--kpi-accent:${t.accent}"><span class="kpi-icon">${t.icon}</span><div class="kpi-label">${esc(t.label)}</div><div class="kpi-value">${esc(t.value)}</div><div class="kpi-sub">${esc(t.sub)}</div></div>`).join('');
+}
+
+function renderBurnup(m, state) {
+  document.getElementById('card-burnup').style.display = 'block';
+  document.getElementById('burnup-sub').textContent =
+    `${state.currentIteration.name} (${fmtDay(m.start)} to ${fmtDay(m.end)}). The flat line is what was committed at planning (${r1(m.committed)}h). The purple line is total scope: every step up is work added mid-sprint. This is a map of external disruption, not a measure of developer failure. Completion dates use each item's state-change date where ADO has one, otherwise its last-changed date.`;
+  drawChart('chart-burnup', {
+    type: 'line',
+    data: { labels: m.series.map(s => s.label), datasets: [
+      { label: 'Committed at planning', data: m.series.map(s => s.committed), borderColor: '#8b93ad', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Ideal pace', data: m.series.map(s => r1(s.ideal)), borderColor: '#3f8cf0', borderDash: [2, 3], pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Total scope', data: m.series.map(s => r1(s.scope)), borderColor: '#8f7bf7', backgroundColor: 'rgba(143,123,247,0.12)', fill: true, stepped: true, borderWidth: 2.5, pointRadius: 3 },
+      { label: 'Completed', data: m.series.map(s => r1(s.done)), borderColor: '#43d9a3', borderWidth: 2.5, pointRadius: 3, tension: 0.2 },
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Effort (hours)' } } }, plugins: { legend: { position: 'bottom' } } },
+  });
+}
+
+function renderCapacity(m, state) {
+  document.getElementById('card-capacity').style.display = 'block';
+  document.getElementById('capacity-sub').textContent =
+    `Each developer has ${r1(m.capPerDev)}h this sprint (${state.opts.devHoursPerDay}h × ${m.workingDays} working days). Effort is the real estimate where ADO has one and an assumed ${state.opts.assumedEffortBug}h/${state.opts.assumedEffortTask}h (Bug/Task) where it doesn't. Include time off in the hours setting before trusting a single person's bar.`;
+  const rows = m.devs.map(d => {
+    const scale = Math.max(d.capacity, d.load);
+    const w = (h) => (scale > 0 ? (h / scale) * 100 : 0).toFixed(1) + '%';
+    const status = d.over > 0 ? `<span class="badge badge-bad">Over by ${r1(d.over)}h</span>` : (d.load < d.capacity * 0.6 ? `<span class="badge badge-warn">${r1(d.free)}h free</span>` : `<span class="badge badge-good">${r1(d.free)}h free</span>`);
+    return `<div class="cap-row"><div class="cap-name">${esc(d.name)}</div>
+      <div class="cap-bar" title="Planned ${r1(d.plannedH)}h · Unplanned ${r1(d.unplannedH)}h · Unrecorded ${r1(d.unrecH)}h · Capacity ${r1(d.capacity)}h">
+        <div class="cap-seg" style="width:${w(d.plannedH)};background:#6a5ff0"></div><div class="cap-seg" style="width:${w(d.unplannedH)};background:#f0b450"></div><div class="cap-seg" style="width:${w(d.unrecH)};background:#f0606e"></div></div>
+      <div class="cap-meta">${r1(d.load)}h of ${r1(d.capacity)}h ${status}</div></div>`;
+  });
+  document.getElementById('cap-rows').innerHTML = rows.length ? rows.join('') : '<div class="empty">No assigned work in this sprint yet.</div>';
+}
+
+function renderEvictions(m) {
+  const card = document.getElementById('card-evict');
+  card.style.display = 'block';
+  const list = document.getElementById('evict-list');
+  if (!m.evictions.length) { list.innerHTML = '<li class="empty">Nobody is over capacity, so nothing needs to leave the sprint.</li>'; return; }
+  list.innerHTML = m.evictions.map(e => {
+    const intro = e.unplannedOpen.length ? ` after taking on ${e.unplannedOpen.map(x => `${idLink(x)} “${esc(field(x.item, 'System.Title'))}” (${r1(x.hours)}h${x.urgency.priorityRaw ? ', P' + esc(parseLeadingNumber(x.urgency.priorityRaw)) : ''})`).join(', ')}` : '';
+    const body = e.evict.length
+      ? `Evict ${e.evict.map(x => `${idLink(x)} “${esc(field(x.item, 'System.Title'))}” (${r1(x.hours)}h)`).join(', ')} to free ${r1(e.freed)}h.`
+      : 'There is no planned, not-started, lower-priority item to evict.';
+    const short = e.shortfall > 0 ? `<span class="ev-sub">Still ${r1(e.shortfall)}h short even after that. This needs a decision from the PM about what else moves out or what is deferred.</span>` : '';
+    return `<li><strong>${esc(e.dev)}</strong> is over by ${r1(e.over)}h${intro}.<span class="ev-sub">${body}</span>${short}</li>`;
+  }).join('');
+}
+
+function renderWip(m, state) {
+  document.getElementById('card-wip').style.display = 'block';
+  const lim = state.opts.wipLimit;
+  document.getElementById('wip-sub').textContent = `Every item over ${lim} in progress is a context switch. Fast-tracked work stacked on top of existing commitments is how this goes red.`;
+  document.getElementById('wip-grid').innerHTML = m.devs.length ? m.devs.map(d => {
+    const over = d.wip > lim, pct = Math.min(100, Math.round((d.wip / lim) * 100));
+    return `<div class="person-card"><div class="pn">${esc(d.name)}</div><div class="pm"><span class="badge ${over ? 'badge-bad' : 'badge-good'}">${d.wip} / ${lim} in progress</span></div><div class="wip-track"><div class="wip-fill ${over ? 'over' : ''}" style="width:${pct}%"></div></div></div>`;
+  }).join('') : '<div class="empty">Nobody has work in progress.</div>';
+}
+
+function renderRecord(m) {
+  document.getElementById('dev-options').innerHTML = m.devs.map(d => `<option value="${esc(d.name)}">`).join('');
+  const dateEl = document.getElementById('ur-date');
+  if (!dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  const log = getLog().filter(e => !lastState || e.team === lastState.teamName).sort((a, b) => (a.date < b.date ? 1 : -1));
+  document.getElementById('ur-rows').innerHTML = log.length ? log.map(e => `<tr><td>${esc(e.date)}</td><td>${esc(e.dev)}</td><td>${esc(e.hours)}</td><td><span class="badge ${e.cat === 'Core' ? 'badge-good' : 'badge-warn'}">${esc(e.cat)}</span></td><td>${esc(e.note)}</td><td><button type="button" class="ghost small" onclick="deleteUnrecorded('${esc(e.id)}')">Remove</button></td></tr>`).join('')
+    : '<tr><td colspan="6" class="empty">Nothing logged yet.</td></tr>';
+  document.getElementById('taggap-sub').textContent = m.tagGap.length
+    ? `${m.tagGap.length} item(s) entered the sprint after planning but carry no "Origin: Unplanned" or "Fast-Track" tag. They are counted as unplanned here because of when they arrived. Tag them in ADO so the volume is visible to everyone.`
+    : 'Every late-added item carries an origin tag.';
+  document.getElementById('taggap-rows').innerHTML = m.tagGap.length ? m.tagGap.map(x => `<tr><td>${idLink(x)}</td><td>${esc(field(x.item, 'System.Title'))}</td><td>${esc(x.assignee || 'Unassigned')}</td><td>${esc(fmtDay(x.addedDate))}${x.addedApprox ? ' ~' : ''}</td><td>${esc(x.urgency.priorityRaw || '—')}</td><td>${r1(x.hours)}${x.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="empty">None</td></tr>';
+}
+
+function renderValue(m) {
+  const sel = document.getElementById('ff-select');
+  sel.innerHTML = '<option value="">Not chosen</option>' + m.devs.map(d => `<option value="${esc(d.name)}"${d.name === m.ffName ? ' selected' : ''}>${esc(d.name)}</option>`).join('');
+  const maxA = Math.max(1, ...m.devs.map(d => d.absorbed));
+  document.getElementById('ff-bars').innerHTML = m.devs.length ? m.devs.map(d => `<div class="cap-row" style="grid-template-columns:120px 1fr 60px;padding:5px 0"><div class="cap-name" style="font-size:12.5px">${esc(d.name)}</div><div class="cap-bar" style="height:14px"><div class="cap-seg" style="width:${(d.absorbed / maxA * 100).toFixed(1)}%;background:#f0b450"></div></div><div class="cap-meta">${r1(d.absorbed)}h</div></div>`).join('') : '<div class="empty">No data yet.</div>';
+  const next = m.absorbedSorted[0];
+  document.getElementById('ff-next').textContent = next ? `Suggested next firefighter: ${next.name} (absorbed the least so far: ${r1(next.absorbed)}h). Rotation order, lightest load first: ${m.absorbedSorted.map(d => d.name).join(', ')}.` : '';
+  const ins = document.getElementById('ff-insulation');
+  if (!m.ffName) ins.innerHTML = '<div class="note">Choose a firefighter to see how well the rest of the team is insulated.</div>';
+  else {
+    const share = m.totalAbsorbed > 0 ? ((m.ffAbsorbed ? m.ffAbsorbed.absorbed : 0) / m.totalAbsorbed) * 100 : 0;
+    const good = share >= 70, mid = share >= 40;
+    ins.innerHTML = `<div class="kpi-tile" style="--kpi-accent:${good ? '#43d9a3' : mid ? '#f0b450' : '#f0606e'}"><div class="kpi-label">Unplanned work landing on ${esc(m.ffName)}</div><div class="kpi-value">${r1(share)}%</div><div class="kpi-sub">${good ? 'The rest of the team is mostly insulated.' : 'The chaos is still spread across the team. Route fast-track requests to the firefighter only.'}</div></div>`;
+  }
+
+  const total = m.ccH.Core + m.ccH.Context;
+  const ctxPct = total > 0 ? (m.ccH.Context / total) * 100 : 0;
+  document.getElementById('cc-sub').textContent = 'Core work delivers value to customers (for example a critical live-site defect). Context work is internal friction (poorly defined requirements, internal requests). Items are classified automatically by priority and severity; use the toggle to correct any that are wrong. If most unplanned work is Context, that is the data to defend the team\'s capacity.';
+  document.getElementById('cc-summary').innerHTML = total > 0
+    ? `<div class="kpi-tile" style="--kpi-accent:${ctxPct > 50 ? '#f0b450' : '#43d9a3'}"><div class="kpi-label">Unplanned effort that is Context</div><div class="kpi-value">${r1(ctxPct)}%</div><div class="kpi-sub">${r1(m.ccH.Context)}h context · ${r1(m.ccH.Core)}h core (includes logged unrecorded work)</div></div>`
+    : '<div class="empty">No unplanned work this sprint.</div>';
+  drawChart('chart-cc', { type: 'doughnut', data: { labels: ['Core', 'Context'], datasets: [{ data: [r1(m.ccH.Core), r1(m.ccH.Context)], backgroundColor: ['#43d9a3', '#f0b450'], borderColor: '#141825' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
+  document.getElementById('cc-rows').innerHTML = m.unplanned.length ? m.unplanned.map(x => `<tr><td>${idLink(x)}</td><td>${esc(field(x.item, 'System.Title'))}</td><td>${esc(x.assignee || 'Unassigned')}</td><td>${esc(x.urgency.priorityRaw || '—')}</td><td>${r1(x.hours)}</td>
+    <td><span class="seg-toggle"><button type="button" class="${x.cc === 'Core' ? 'on-core' : ''}" onclick="setCoreContext(${Number(x.id)}, 'Core')">Core</button><button type="button" class="${x.cc === 'Context' ? 'on-context' : ''}" onclick="setCoreContext(${Number(x.id)}, 'Context')">Context</button></span> <span class="note">${esc(x.ccSource)}</span></td></tr>`).join('')
+    : '<tr><td colspan="6" class="empty">No unplanned items this sprint.</td></tr>';
+}
+
+function renderHistory(m) {
+  const withData = m.history.filter(h => h.pct != null);
+  document.getElementById('history-sub').textContent = withData.length
+    ? `Average unplanned share across the last ${withData.length} sprint(s): ${r1(m.histAvg)}%. ${withData.length < 5 ? 'Five to eight sprints give a reliable average, so treat this as indicative until then. ' : ''}This is a lower bound: items that were added late and later rolled into another sprint are not counted. Use the average to set the buffer in Settings and to commit only what the team can really deliver.`
+    : 'No past sprint data yet, so there is no average to base the buffer on. Tag unplanned work from now on and this fills in.';
+  drawChart('chart-history', { type: 'bar', data: { labels: m.history.map(h => h.name).concat(['Current']), datasets: [{ label: 'Unplanned share (%)',
+    data: m.history.map(h => h.pct == null ? 0 : r1(h.pct)).concat([m.totalWork > 0 ? r1((m.disruptionH / m.totalWork) * 100) : 0]),
+    backgroundColor: m.history.map(() => '#6a5ff0').concat(['#f0b450']), borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '% of effort' } } } } });
+  const events = m.unplanned.slice().sort((a, b) => a.addedDate - b.addedDate);
+  document.getElementById('scope-events').innerHTML = events.length ? events.map(x =>
+    `<li><span class="tl-date">${esc(fmtDay(x.addedDate))}${x.addedApprox ? ' (approx, from created date)' : ''} · ${esc(x.why)}</span>${idLink(x)} <strong>${esc(field(x.item, 'System.Title'))}</strong> · +${r1(x.hours)}h · ${esc(x.urgency.priorityRaw ? 'P' + parseLeadingNumber(x.urgency.priorityRaw) : 'no priority')} · ${esc(x.assignee || 'Unassigned')}</li>`).join('')
+    : '<li class="empty" style="border:none">Nothing was added after planning. A quiet sprint.</li>';
+}
+
+// ---- manual actions ----
+function addUnrecorded() {
+  const dev = document.getElementById('ur-dev').value.trim();
+  const hours = parseFloat(document.getElementById('ur-hours').value);
+  const date = document.getElementById('ur-date').value;
+  const note = document.getElementById('ur-note').value.trim();
+  const cat = document.getElementById('ur-cat').value;
+  const st = document.getElementById('ur-status');
+  if (!lastState) { st.textContent = 'Analyze the sprint first so the entry is tied to a team.'; return; }
+  if (!dev || !(hours > 0) || !date) { st.textContent = 'Developer, hours and date are required.'; return; }
+  const log = getLog();
+  log.push({ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), team: lastState.teamName, dev, hours, date, note, cat });
+  storage.set('ado-unicorn-unrecorded', JSON.stringify(log));
+  document.getElementById('ur-note').value = '';
+  st.textContent = 'Added.';
+  computeAndRender();
+}
+function deleteUnrecorded(id) {
+  storage.set('ado-unicorn-unrecorded', JSON.stringify(getLog().filter(e => e.id !== id)));
+  computeAndRender();
+}
+function setCoreContext(id, cat) {
+  const o = getOverrides(); o[id] = cat;
+  storage.set('ado-unicorn-cc-overrides', JSON.stringify(o));
+  computeAndRender();
+}
+function setFirefighter(name) { storage.set(ffKey(), name); computeAndRender(); }
+async function copyAndon() {
+  const st = document.getElementById('andon-status');
+  try { await navigator.clipboard.writeText(document.getElementById('andon-text').value); st.textContent = 'Copied.'; }
+  catch (e) { document.getElementById('andon-text').select(); st.textContent = 'Select the text and copy it manually.'; }
+}
+
+// ---- export ----
+function buildDisruptionCsv(m, state) {
+  const sprint = state.currentIteration.name;
+  const header = ['Sprint', 'Source', 'ID', 'Type', 'Title', 'Assigned To', 'State', 'Priority', 'Severity', 'Effort (h)', 'Effort assumed', 'Planned or unplanned', 'Why', 'Added to sprint', 'Completed', 'Core or context', 'Tags', 'Link'];
+  const rows = m.items.map(x => [
+    sprint, 'ADO', x.id, field(x.item, 'System.WorkItemType'), field(x.item, 'System.Title'), x.assignee || 'Unassigned', field(x.item, 'System.State'),
+    x.urgency.priorityRaw || '', x.urgency.severityRaw || '', x.hours, x.assumed ? 'Yes' : 'No', x.removed ? 'Removed' : (x.unplanned ? 'Unplanned' : 'Planned'), x.why,
+    x.addedDate.toISOString().slice(0, 10) + (x.addedApprox ? ' (approx)' : ''), x.completedDate ? x.completedDate.toISOString().slice(0, 10) : '', x.unplanned ? x.cc : '', x.tags,
+    workItemBaseUrl ? workItemBaseUrl + x.id : '',
+  ]);
+  m.logIn.forEach(e => rows.push([sprint, 'Logged by hand', '', '', e.note, e.dev, '', '', '', Number(e.hours) || 0, 'No', 'Unplanned', 'Unrecorded work', e.date, '', e.cat, '', '']));
+  return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+function exportDisruptionCsv() {
+  const st = document.getElementById('export-status');
+  if (!window._model || !lastState) { st.textContent = 'Analyze the sprint first.'; return; }
+  const csv = '﻿' + buildDisruptionCsv(window._model, lastState);
+  const fname = `disruption-report_${String(lastState.currentIteration.name).replace(/[^A-Za-z0-9]+/g, '-')}_${new Date().toISOString().slice(0, 10)}.csv`;
+  try {
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    st.textContent = `Exported ${window._model.items.length + window._model.logIn.length} row(s) to ${fname}`;
+  } catch (e) { st.textContent = 'The browser blocked the download.'; }
+}
+</script>
+</body>
+</html>

@@ -154,6 +154,9 @@
   .metric-chip.tier-na { background: rgba(139,147,173,0.1); color: var(--muted); }
   .metric-chip.tier-na .chip-dot { background: var(--muted); }
 
+  .plan-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .plan-toolbar-note { font-size: 12px; color: var(--muted); }
+
   /* ---- sprint rebalancing suggestions ---- */
   .move-list { list-style: none; margin: 0; padding: 0; }
   .move-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 2px; border-bottom: 1px solid #1e2230; font-size: 13px; }
@@ -281,6 +284,10 @@
 
   <!-- ============ SPRINT PLANNER ============ -->
   <div class="tab-panel" id="tab-sprint" data-tab="sprint" style="display:none">
+    <div class="plan-toolbar">
+      <button type="button" onclick="exportSprintPlanCsv()">⬇ Export sprint plan (CSV)</button>
+      <span id="export-status" class="plan-toolbar-note">Opens in Excel. Includes the suggested week, sprint check and move/drop actions for every open item.</span>
+    </div>
     <section id="sec-open" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
         <h2>🎯 P1 / P2 — needs attention</h2>
@@ -1798,6 +1805,80 @@ function renderCarryover(carryoverItems) {
         </tr>`;
       }).join('')
     : `<tr><td colspan="8" class="empty">Nothing carried over — every past sprint is clean</td></tr>`;
+}
+
+// ---------------------------------------------------------------------
+// Sprint plan export — one row per open item, in suggested-week order,
+// with the sprint check and any move/drop action, so the plan can be
+// opened in Excel, shared, and compared against yesterday's export.
+// ---------------------------------------------------------------------
+function csvCell(v) {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(v);
+  let s = String(v);
+  // stop spreadsheet apps treating text that starts with = + - @ as a formula
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function buildSprintPlanCsv() {
+  const scored = (window._scoredOpen || []).slice();
+  const assumedByType = window._assumedByType || { _default: 4 };
+  const flags = window._moveFlags || { pull: {}, drop: {} };
+  const statusText = (s) => {
+    const r = s._sprintStatus;
+    if (!r) return '';
+    if (r.status === 'right') return 'Right sprint';
+    if (r.status === 'wrong') return `Wrong sprint (in ${r.currentName})`;
+    if (r.status === 'unscheduled') return 'Not yet scheduled';
+    if (r.status === 'pool') return 'Unallocated Pool';
+    return '';
+  };
+  scored.sort((a, b) => {
+    const wa = a.suggestedWeek == null ? 99 : a.suggestedWeek, wb = b.suggestedWeek == null ? 99 : b.suggestedWeek;
+    if (wa !== wb) return wa - wb;
+    if (!!b.urgency.critical !== !!a.urgency.critical) return (b.urgency.critical ? 1 : 0) - (a.urgency.critical ? 1 : 0);
+    return b.urgency.urgencyScore - a.urgency.urgencyScore;
+  });
+  const header = ['Suggested week', 'Week commencing', 'ID', 'Type', 'Title', 'State', 'Assigned To', 'Priority', 'Severity',
+    'Critical', 'Effort (h)', 'Effort assumed', 'Complexity', 'Current sprint', 'Sprint check', 'Sprint action', 'Due date', 'Link'];
+  const rows = scored.map(s => {
+    const it = s.item;
+    const eff = effortFor(it, assumedByType);
+    const path = field(it, 'System.IterationPath', '');
+    let action = '';
+    if (flags.pull[it.id]) action = `Move to ${flags.pull[it.id]}`;
+    else if (flags.drop[it.id]) action = `Consider dropping (frees room for #${flags.drop[it.id]})`;
+    const hasWeek = s.suggestedWeek != null && s.assignee;
+    return [
+      hasWeek ? weekLabel(s.suggestedWeek) : (s.assignee ? '' : 'Unassigned'),
+      hasWeek ? weekMonday(s.suggestedWeek).toISOString().slice(0, 10) : '',
+      it.id, field(it, 'System.WorkItemType'), field(it, 'System.Title'), field(it, 'System.State'),
+      s.assignee || 'Unassigned', s.urgency.priorityRaw || '', s.urgency.severityRaw || '',
+      s.urgency.critical ? 'Yes' : 'No', eff.hours, eff.assumed ? 'Yes' : 'No',
+      `${s.complexity.label} (${s.complexity.score})`,
+      path ? path.split('\\').pop() : '', statusText(s), action,
+      (field(it, 'Microsoft.VSTS.Scheduling.DueDate', '') || '').slice(0, 10),
+      workItemBaseUrl ? `${workItemBaseUrl}${it.id}` : '',
+    ];
+  });
+  return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+function exportSprintPlanCsv() {
+  const status = document.getElementById('export-status');
+  if (!lastState || !window._scoredOpen) { status.textContent = 'Load a team first.'; return; }
+  const csv = '﻿' + buildSprintPlanCsv();
+  const safeTeam = String(lastState.teamName || lastState.teamChoice).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const fname = `sprint-plan_${safeTeam}_${new Date().toISOString().slice(0, 10)}.csv`;
+  try {
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status.textContent = `Exported ${window._scoredOpen.length} item(s) to ${fname}`;
+  } catch (e) {
+    status.textContent = 'The browser blocked the download.';
+  }
 }
 
 // ---------------------------------------------------------------------
