@@ -7,6 +7,7 @@
 <script src="session.js"></script>
 <script src="nav.js"></script>
 <script src="loader.js"></script>
+<script src="effort-estimator.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -165,8 +166,8 @@
           <div class="field"><label>WIP limit per person</label><input id="wipLimit" type="number" value="3" min="1"></div>
           <div class="field"><label>Critical priority value (≤)</label><input id="criticalPriority" type="number" value="1" min="1" max="4"></div>
           <div class="field"><label>Critical severity keyword</label><input id="criticalSeverityKeyword" value="critical"></div>
-          <div class="field"><label>Assumed effort — Bug (h)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
-          <div class="field"><label>Assumed effort — Task (h)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Fallback effort — Bug (h)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Fallback effort — Task (h)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
           <div class="field"><label>Past sprints for history</label><input id="historySprints" type="number" value="6" min="2" max="10"></div>
         </div>
       </details>
@@ -425,8 +426,40 @@ function effortFor(it, assumedByType) {
   if (!isNaN(rem) && rem > 0) return { hours: rem, assumed: false };
   const orig = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.OriginalEstimate', ''));
   if (!isNaN(orig) && orig > 0) return { hours: orig, assumed: false };
+  const cw = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.CompletedWork', ''));
+  if (!isNaN(cw) && cw > 0) return { hours: cw, assumed: false };
+  // nothing recorded in ADO: estimate from the topic (similar work, else complexity)
+  if (window._effortModel) {
+    const e = window._effortModel.estimate(it);
+    return { hours: e.hours, assumed: true, estimated: true, source: e.source, confidence: e.confidence, basis: e.basis };
+  }
   const wit = field(it, 'System.WorkItemType');
-  return { hours: (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4, assumed: true };
+  return { hours: (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4, assumed: true, basis: 'flat fallback hours' };
+}
+function effortTag(eff) {
+  if (!eff.assumed) return '';
+  const tip = esc(eff.basis || 'assumed');
+  if (eff.estimated) return ` <span class="badge badge-muted" title="${tip}">est. · ${eff.source === 'similar' ? 'similar work' : 'complexity'} · ${esc(eff.confidence)}</span>`;
+  return ` <span class="badge badge-muted" title="${tip}">assumed</span>`;
+}
+// Very light, self-contained complexity read used only when no similar work exists.
+function quickComplexity(title, desc) {
+  const text = (String(title || '') + ' ' + String(desc || '').replace(/<[^>]*>/g, ' ')).toLowerCase();
+  const high = ['migration', 'migrate', 'integration', 'integrate', 'architecture', 'refactor', 'legacy', 'redesign', 'rewrite', 'root cause', 'investigat', 'security', 'data loss', 'corruption', 'dependenc', 'end-to-end', 'concurrency', 'performance', 'third-party'];
+  const low = ['typo', 'label', 'wording', 'cosmetic', 'spelling', 'rename', 'minor', 'simple', 'quick fix', 'colour', 'color', 'spacing', 'align'];
+  const h = high.filter(k => text.includes(k)).length, l = low.filter(k => text.includes(k)).length;
+  const score = 1 + Math.min(3, text.length / 400) + h * 2 - l * 1.5;
+  return { label: score <= 3 ? 'Low' : score <= 6 ? 'Medium' : 'High' };
+}
+function buildEffortModel(items, assumedByType) {
+  const realHours = (it) => {
+    for (const f of ['Microsoft.VSTS.Scheduling.CompletedWork', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork']) {
+      const v = parseFloat(field(it, f, ''));
+      if (!isNaN(v) && v > 0) return v;
+    }
+    return null;
+  };
+  window._effortModel = ADOEffort.build({ field, items, hoursOf: realHours, complexityFn: quickComplexity, fallbackByType: assumedByType });
 }
 function classifyUrgency(it, criticalPriority, kw) {
   const priorityRaw = field(it, priorityFieldRef, ''), severityRaw = field(it, severityFieldRef, '');
@@ -455,7 +488,7 @@ const lastSeg = (p) => (p || '').split('\\').pop();
 // the sprint), and the last few past sprints for the trend.
 // ---------------------------------------------------------------------
 const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate',
-  'System.IterationPath', 'System.Tags', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork'];
+  'System.IterationPath', 'System.Tags', 'System.Description', 'Microsoft.VSTS.Scheduling.CompletedWork', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork'];
 
 async function loadUnicorn() {
   clearError();
@@ -593,6 +626,7 @@ function workingDaysBetween(start, end) {
 function buildModel(state, log, overrides) {
   const o = state.opts;
   const assumedByType = { Bug: o.assumedEffortBug, Task: o.assumedEffortTask, _default: o.assumedEffortBug };
+  buildEffortModel([...state.sprintItems, ...state.historyItems], assumedByType);
   const it0 = state.currentIteration;
   const start = new Date(it0.attributes.startDate), end = new Date(it0.attributes.finishDate);
   const graceEnd = new Date(start.getTime() + o.graceHours * 3600000);
@@ -614,7 +648,7 @@ function buildModel(state, log, overrides) {
     const unplanned = tagFlag || late;
     const auto = urgency.critical ? 'Core' : 'Context';
     return {
-      item: it, id: it.id, assignee: field(it, 'System.AssignedTo', '') || null, cat, hours: eff.hours, assumed: eff.assumed, urgency, tags, tagFlag, late,
+      item: it, id: it.id, assignee: field(it, 'System.AssignedTo', '') || null, cat, hours: eff.hours, assumed: eff.assumed, estimated: !!eff.estimated, estSource: eff.source, estConfidence: eff.confidence, estBasis: eff.basis, urgency, tags, tagFlag, late,
       unplanned, why: tagFlag ? 'Tagged ' + (tags.match(ORIGIN_TAG_RE) || [''])[0] : (late ? 'Added after planning' : ''),
       addedDate, addedApprox: added.approx, completedDate, removed: cat === 'Removed', done: cat === 'Completed',
       cc: overrides[it.id] || ccTag || auto, ccSource: overrides[it.id] ? 'manual' : (ccTag ? 'tag' : 'auto'),
@@ -767,7 +801,7 @@ function renderBurnup(m, state) {
 function renderCapacity(m, state) {
   document.getElementById('card-capacity').style.display = 'block';
   document.getElementById('capacity-sub').textContent =
-    `Each developer has ${r1(m.capPerDev)}h this sprint (${state.opts.devHoursPerDay}h × ${m.workingDays} working days). Effort is the real estimate where ADO has one and an assumed ${state.opts.assumedEffortBug}h/${state.opts.assumedEffortTask}h (Bug/Task) where it doesn't. Include time off in the hours setting before trusting a single person's bar.`;
+    `Each developer has ${r1(m.capPerDev)}h this sprint (${state.opts.devHoursPerDay}h × ${m.workingDays} working days). Effort is the real estimate where ADO has one. Where it doesn't, it is estimated from the topic: the closest similar work that has real hours, otherwise a complexity-scaled baseline (hover the badge on any item to see why). Include time off in the hours setting before trusting a single person's bar.`;
   const rows = m.devs.map(d => {
     const scale = Math.max(d.capacity, d.load);
     const w = (h) => (scale > 0 ? (h / scale) * 100 : 0).toFixed(1) + '%';
@@ -815,7 +849,7 @@ function renderRecord(m) {
   document.getElementById('taggap-sub').textContent = m.tagGap.length
     ? `${m.tagGap.length} item(s) entered the sprint after planning but carry no "Origin: Unplanned" or "Fast-Track" tag. They are counted as unplanned here because of when they arrived. Tag them in ADO so the volume is visible to everyone.`
     : 'Every late-added item carries an origin tag.';
-  document.getElementById('taggap-rows').innerHTML = m.tagGap.length ? m.tagGap.map(x => `<tr><td>${idLink(x)}</td><td>${esc(field(x.item, 'System.Title'))}</td><td>${esc(x.assignee || 'Unassigned')}</td><td>${esc(fmtDay(x.addedDate))}${x.addedApprox ? ' ~' : ''}</td><td>${esc(x.urgency.priorityRaw || '—')}</td><td>${r1(x.hours)}${x.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}</td></tr>`).join('')
+  document.getElementById('taggap-rows').innerHTML = m.tagGap.length ? m.tagGap.map(x => `<tr><td>${idLink(x)}</td><td>${esc(field(x.item, 'System.Title'))}</td><td>${esc(x.assignee || 'Unassigned')}</td><td>${esc(fmtDay(x.addedDate))}${x.addedApprox ? ' ~' : ''}</td><td>${esc(x.urgency.priorityRaw || '—')}</td><td>${r1(x.hours)}${effortTag({ assumed: x.assumed, estimated: x.estimated, source: x.estSource, confidence: x.estConfidence, basis: x.estBasis })}</td></tr>`).join('')
     : '<tr><td colspan="6" class="empty">None</td></tr>';
 }
 
@@ -897,14 +931,14 @@ async function copyAndon() {
 // ---- export ----
 function buildDisruptionCsv(m, state) {
   const sprint = state.currentIteration.name;
-  const header = ['Sprint', 'Source', 'ID', 'Type', 'Title', 'Assigned To', 'State', 'Priority', 'Severity', 'Effort (h)', 'Effort assumed', 'Planned or unplanned', 'Why', 'Added to sprint', 'Completed', 'Core or context', 'Tags', 'Link'];
+  const header = ['Sprint', 'Source', 'ID', 'Type', 'Title', 'Assigned To', 'State', 'Priority', 'Severity', 'Effort (h)', 'Effort source', 'Effort basis', 'Planned or unplanned', 'Why', 'Added to sprint', 'Completed', 'Core or context', 'Tags', 'Link'];
   const rows = m.items.map(x => [
     sprint, 'ADO', x.id, field(x.item, 'System.WorkItemType'), field(x.item, 'System.Title'), x.assignee || 'Unassigned', field(x.item, 'System.State'),
-    x.urgency.priorityRaw || '', x.urgency.severityRaw || '', x.hours, x.assumed ? 'Yes' : 'No', x.removed ? 'Removed' : (x.unplanned ? 'Unplanned' : 'Planned'), x.why,
+    x.urgency.priorityRaw || '', x.urgency.severityRaw || '', x.hours, x.assumed ? (x.estimated ? `Estimated (${x.estSource}, ${x.estConfidence})` : 'Assumed') : 'ADO', x.assumed ? (x.estBasis || '') : '', x.removed ? 'Removed' : (x.unplanned ? 'Unplanned' : 'Planned'), x.why,
     x.addedDate.toISOString().slice(0, 10) + (x.addedApprox ? ' (approx)' : ''), x.completedDate ? x.completedDate.toISOString().slice(0, 10) : '', x.unplanned ? x.cc : '', x.tags,
     workItemBaseUrl ? workItemBaseUrl + x.id : '',
   ]);
-  m.logIn.forEach(e => rows.push([sprint, 'Logged by hand', '', '', e.note, e.dev, '', '', '', Number(e.hours) || 0, 'No', 'Unplanned', 'Unrecorded work', e.date, '', e.cat, '', '']));
+  m.logIn.forEach(e => rows.push([sprint, 'Logged by hand', '', '', e.note, e.dev, '', '', '', Number(e.hours) || 0, 'Logged by hand', '', 'Unplanned', 'Unrecorded work', e.date, '', e.cat, '', '']));
   return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 function exportDisruptionCsv() {

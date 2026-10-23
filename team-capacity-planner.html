@@ -7,6 +7,7 @@
 <script src="session.js"></script>
 <script src="nav.js"></script>
 <script src="loader.js"></script>
+<script src="effort-estimator.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -174,7 +175,7 @@
 <div class="app-main">
 
   <h1>Dev Planner</h1>
-  <div class="subtitle">Decide what goes into each sprint: a P1/P2-first view of every open bug/task (with assumed effort where ADO's blank), a suggested sprint-week allocation, and a heads-up whenever something's urgency changed enough that it should move sprints. Team-wide performance and reporting now live on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
+  <div class="subtitle">Decide what goes into each sprint: a P1/P2-first view of every open bug/task (effort estimated from the topic where ADO's blank), a suggested sprint-week allocation, and a heads-up whenever something's urgency changed enough that it should move sprints. Team-wide performance and reporting now live on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
 
   <details class="config-panel" id="config-panel" open>
     <summary>⚙ Connection &amp; settings <span id="config-summary-sub"></span></summary>
@@ -227,8 +228,8 @@
           <div class="field"><label># of developers</label><input id="devsCount" type="number" value="5" min="1"></div>
           <div class="field"><label>Productive hours / day</label><input id="devHoursPerDay" type="number" value="6" min="1" max="12" step="0.5"></div>
           <div class="field"><label>Working days / week</label><input id="devDaysPerWeek" type="number" value="5" min="1" max="7"></div>
-          <div class="field"><label>Assumed effort — Bug (hrs, if blank in ADO)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
-          <div class="field"><label>Assumed effort — Task (hrs, if blank in ADO)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Fallback effort — Bug (hrs, only when there's nothing to estimate from)</label><input id="assumedEffortBug" type="number" value="4" min="0.5" step="0.5"></div>
+          <div class="field"><label>Fallback effort — Task (hrs, only when there's nothing to estimate from)</label><input id="assumedEffortTask" type="number" value="4" min="0.5" step="0.5"></div>
           <div class="field"><label>Fallback rejection rate % (used until history exists)</label><input id="reworkRejectionRatePct" type="number" value="30" min="0" max="100"></div>
           <div class="field"><label>Avg rework effort as % of original</label><input id="reworkEffortPct" type="number" value="50" min="0" max="200"></div>
           <div class="field"><label>Stale after (days)</label><input id="staleDays1" type="number" value="30" min="1"></div>
@@ -293,7 +294,7 @@
         <h2>🎯 P1 / P2 — needs attention</h2>
         <label class="inline-check"><input type="checkbox" id="p2AtRiskOnly" checked onchange="renderOpenTable()"> Show only at-risk P2 (hide the rest for stand-up)</label>
       </div>
-      <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real or assumed) and date-risk flags.</div>
+      <div class="meta" id="meta-open-priority">All open Bugs/Tasks at P1 or P2, pinned here ahead of everything else — with effort (real from ADO, or estimated from the topic) and date-risk flags.</div>
       <div class="table-wrap"><table><thead><tr>
         <th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Priority</th><th>Severity</th>
         <th>Effort (h)</th><th>Assigned To</th><th>Age (d)</th><th>At risk</th><th>In right sprint?</th>
@@ -756,7 +757,7 @@ function moveIndicatorBadge(it) {
 const FIELDS = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo',
                 'System.ChangedDate', 'System.CreatedDate', 'System.AreaPath', 'System.IterationPath',
                 'System.Description', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork',
-                'Microsoft.VSTS.Scheduling.DueDate', 'Microsoft.VSTS.Scheduling.StartDate'];
+                'Microsoft.VSTS.Scheduling.DueDate', 'Microsoft.VSTS.Scheduling.StartDate', 'Microsoft.VSTS.Scheduling.CompletedWork'];
 
 // ---------------------------------------------------------------------
 // Effort — real ADO numbers when present, an *assumed* fallback (flagged
@@ -768,9 +769,35 @@ function effortFor(it, assumedByType) {
   if (!isNaN(remaining) && remaining > 0) return { hours: remaining, assumed: false, source: 'Remaining Work' };
   const original = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.OriginalEstimate', ''));
   if (!isNaN(original) && original > 0) return { hours: original, assumed: false, source: 'Original Estimate' };
+  const completed = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.CompletedWork', ''));
+  if (!isNaN(completed) && completed > 0) return { hours: completed, assumed: false, source: 'Completed Work' };
+  // nothing recorded in ADO: estimate from the topic (similar work, else complexity)
+  if (window._effortModel) {
+    const e = window._effortModel.estimate(it);
+    return { hours: e.hours, assumed: true, estimated: true, source: e.source, confidence: e.confidence, basis: e.basis };
+  }
   const wit = field(it, 'System.WorkItemType');
   const assumed = (assumedByType && assumedByType[wit]) || (assumedByType && assumedByType._default) || 4;
-  return { hours: assumed, assumed: true, source: 'assumed default' };
+  return { hours: assumed, assumed: true, source: 'assumed default', basis: 'flat fallback hours' };
+}
+// Small badge shown next to any effort that isn't a real ADO number.
+function effortTag(eff) {
+  if (!eff.assumed) return '';
+  const tip = String(eff.basis || 'assumed').replace(/"/g, '&quot;');
+  if (eff.estimated) return ` <span class="badge badge-muted" title="${tip}">est. · ${eff.source === 'similar' ? 'similar work' : 'complexity'} · ${eff.confidence}</span>`;
+  return ` <span class="badge badge-muted" title="${tip}">assumed</span>`;
+}
+// Builds the topic-based estimator from every item that has real hours.
+function buildEffortModel(openItems, completedInWindow, assumedByType) {
+  const realHours = (it) => {
+    for (const f of ['Microsoft.VSTS.Scheduling.CompletedWork', 'Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork']) {
+      const v = parseFloat(field(it, f, ''));
+      if (!isNaN(v) && v > 0) return v;
+    }
+    return null;
+  };
+  window._effortModel = ADOEffort.build({ field, items: [...openItems, ...completedInWindow], hoursOf: realHours,
+    complexityFn: computeComplexity, fallbackByType: assumedByType });
 }
 
 // ---------------------------------------------------------------------
@@ -1106,6 +1133,7 @@ function computeAndRender() {
           testRejectedItems, testCaseWindowCount, currentIteration } = lastState;
   document.getElementById('tab-nav').style.display = 'flex';
   const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
+  buildEffortModel(openItems, completedInWindow, assumedByType);
 
   // Score every open item once.
   const scored = openItems.map(it => {
@@ -1632,7 +1660,7 @@ function renderOpenTable() {
           ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--bad);text-decoration:underline;font-weight:700">#${it.id}</a>`
           : `#${it.id}`;
         const eff = effortFor(it, assumedByType);
-        const effCell = `${eff.hours}h${eff.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}`;
+        const effCell = `${eff.hours}h${effortTag(eff)}`;
         const riskFlags = computeAtRiskFlags(it, dueSoonDays, true);
         const riskCell = riskFlags.length
           ? riskFlags.map(f => `<span class="badge badge-bad">${f}</span>`).join(' ')
@@ -1666,7 +1694,7 @@ function renderOpenTable() {
         const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
         const stale = stalenessBadge(s.age, staleDays1, staleDays2);
         const eff = effortFor(it, assumedByType);
-        const effCell = `${eff.hours}h${eff.assumed ? ' <span class="badge badge-muted">assumed</span>' : ''}`;
+        const effCell = `${eff.hours}h${effortTag(eff)}`;
         return `<tr>
           <td>${idCell}</td>
           <td>${field(it, 'System.Title')}${critBadge} ${stale}</td>
@@ -1840,7 +1868,7 @@ function buildSprintPlanCsv() {
     return b.urgency.urgencyScore - a.urgency.urgencyScore;
   });
   const header = ['Suggested week', 'Week commencing', 'ID', 'Type', 'Title', 'State', 'Assigned To', 'Priority', 'Severity',
-    'Critical', 'Effort (h)', 'Effort assumed', 'Complexity', 'Current sprint', 'Sprint check', 'Sprint action', 'Due date', 'Link'];
+    'Critical', 'Effort (h)', 'Effort source', 'Effort basis', 'Complexity', 'Current sprint', 'Sprint check', 'Sprint action', 'Due date', 'Link'];
   const rows = scored.map(s => {
     const it = s.item;
     const eff = effortFor(it, assumedByType);
@@ -1854,7 +1882,7 @@ function buildSprintPlanCsv() {
       hasWeek ? weekMonday(s.suggestedWeek).toISOString().slice(0, 10) : '',
       it.id, field(it, 'System.WorkItemType'), field(it, 'System.Title'), field(it, 'System.State'),
       s.assignee || 'Unassigned', s.urgency.priorityRaw || '', s.urgency.severityRaw || '',
-      s.urgency.critical ? 'Yes' : 'No', eff.hours, eff.assumed ? 'Yes' : 'No',
+      s.urgency.critical ? 'Yes' : 'No', eff.hours, eff.assumed ? (eff.estimated ? `Estimated (${eff.source}, ${eff.confidence})` : 'Assumed') : 'ADO', eff.assumed ? (eff.basis || '') : '',
       `${s.complexity.label} (${s.complexity.score})`,
       path ? path.split('\\').pop() : '', statusText(s), action,
       (field(it, 'Microsoft.VSTS.Scheduling.DueDate', '') || '').slice(0, 10),
