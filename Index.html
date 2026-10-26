@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ADO Morning Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
+<script src="loader.js"></script>
+<style>
+  :root {
+    --bg: #eceff1; --card: #ffffff; --border: #cfd8dc; --text: #1a1a1a;
+    --muted: #607d8b; --accent: #3f51b5; --accent-dark: #303f9f;
+    --good: #2e7d32; --good-bg: #e8f5e9;
+    --warn: #b45309; --warn-bg: #fff3e0;
+    --bad: #c62828; --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, -apple-system, Arial, sans-serif;
+         margin: 0; padding: 32px; }
+  h1 { font-size: 22px; margin-bottom: 4px; font-weight: 600; letter-spacing: -0.2px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .config { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .config .field { display: flex; flex-direction: column; gap: 4px; }
+  .config label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .config input, .config select { background: #fafafa; border: 1px solid var(--border); border-radius: 2px;
+                  color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  .config input:focus, .config select:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .config .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .config .full { grid-column: 1 / -1; }
+  button { background: var(--accent); color: white; border: none; border-radius: 2px;
+           padding: 10px 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+           cursor: pointer; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 8px 10px; font-size: 12px; flex: 1; }
+  button.danger { background: var(--bad); }
+  button.danger:hover { background: #a01f1f; }
+  .checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  #status { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  #error { background: var(--bad-bg); border-left: 4px solid var(--bad); color: #7a1f1f; border-radius: 2px;
+           padding: 14px 16px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; display: none; }
+  #error a { color: #7a1f1f; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+          border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 16px; }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .delta { font-size: 11px; margin-top: 4px; font-weight: 600; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 20px; margin-bottom: 20px; display: none; }
+  section h2 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
+  section .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.3px; padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7fa; }
+  .badge { background: #e8eaf6; color: var(--accent-dark); padding: 2px 8px; border-radius: 2px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+  .badge-bad { background: var(--bad-bg); color: var(--bad); }
+  .badge-good { background: var(--good-bg); color: var(--good); }
+  .badge-warn { background: var(--warn-bg); color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 20px !important; }
+  .section-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
+  .section-toggles label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text);
+                            text-transform: none; font-weight: 400; }
+  @media print {
+    body.printing-comments-only > *:not(#sec-comments) { display: none !important; }
+    body.printing-comments-only #print-comments-header { display: block !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    section { box-shadow: none !important; border: 1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+<script>ADONav.render('dashboard');</script>
+<div class="app-main">
+
+  <h1>ADO Morning Dashboard</h1>
+  <div class="subtitle">Runs entirely in your browser — nothing installed. Rows sitting more than 5 days in their current state are highlighted.</div>
+
+  <div class="config">
+    <div style="display:none">
+      <select id="profileSelect" onchange="applyProfile(this.value)"><option value="">-- New / unsaved --</option></select>
+      <input id="profileName">
+      <input id="org"><input id="project"><input id="team"><input id="pat" type="password">
+      <input type="checkbox" id="remember">
+    </div>
+
+    <div class="actions" style="margin-bottom:2px">
+      <button id="loadBtn" onclick="loadDashboard()">Refresh Dashboard</button>
+      <button id="sendBtn" onclick="sendReport()" disabled>Send Report</button>
+      <span id="status"></span>
+    </div>
+
+    <details class="config-details full" style="grid-column:1/-1">
+      <summary>Report options</summary>
+      <div class="field" style="margin-bottom:12px;max-width:320px"><label>Send report to (optional)</label><input id="recipient" placeholder="you@company.com"></div>
+      <label style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px">Report Sections — choose what to include before generating</label>
+      <div class="section-toggles">
+        <label><input type="checkbox" id="show-insights" checked onchange="saveSectionPrefs()"> Automated insights</label>
+        <label><input type="checkbox" id="show-burndown" checked onchange="saveSectionPrefs()"> Sprint burndown status</label>
+        <label><input type="checkbox" id="show-devBurndown" checked onchange="saveSectionPrefs()"> Development sprint burndown</label>
+        <label><input type="checkbox" id="show-completed" checked onchange="saveSectionPrefs()"> Completed (24h)</label>
+        <label><input type="checkbox" id="show-reopened" checked onchange="saveSectionPrefs()"> Reopened items</label>
+        <label><input type="checkbox" id="show-blocked" checked onchange="saveSectionPrefs()"> Blocked items</label>
+        <label><input type="checkbox" id="show-sprint" checked onchange="saveSectionPrefs()"> Current sprint</label>
+        <label><input type="checkbox" id="show-carryover" checked onchange="saveSectionPrefs()"> Carried over</label>
+        <label><input type="checkbox" id="show-weekly" checked onchange="saveSectionPrefs()"> Completed this week</label>
+        <label><input type="checkbox" id="show-teamPerformance" checked onchange="saveSectionPrefs()"> Weekly team performance</label>
+        <label><input type="checkbox" id="show-workload" checked onchange="saveSectionPrefs()"> Workload by developer</label>
+        <label><input type="checkbox" id="show-area" checked onchange="saveSectionPrefs()"> Open work by area path</label>
+        <label><input type="checkbox" id="show-bugs" checked onchange="saveSectionPrefs()"> Bug backlog</label>
+        <label><input type="checkbox" id="show-issues" checked onchange="saveSectionPrefs()"> Issues backlog</label>
+        <label><input type="checkbox" id="show-completionTrend" checked onchange="saveSectionPrefs()"> Completion trend chart</label>
+        <label><input type="checkbox" id="show-backlogAge" checked onchange="saveSectionPrefs()"> Backlog age chart</label>
+        <label><input type="checkbox" id="show-comments" checked onchange="saveSectionPrefs()"> Recent comments (project-wide, open items)</label>
+      </div>
+    </details>
+  </div>
+
+  <section id="sec-search" style="margin-bottom:16px">
+    <h2>Find a work item</h2>
+    <div class="meta">Type a work item ID (e.g. 12345 or WI12345) or a TMT number. Searches all states, not just what is on this dashboard.</div>
+    <form onsubmit="searchWorkItems(); return false;" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="searchQuery" type="search" placeholder="WI or TMT, e.g. 12345 or TMT-0456" autocomplete="off" style="flex:1;min-width:220px;max-width:420px">
+      <button type="submit" id="searchBtn">Search</button>
+      <button type="button" onclick="clearSearch()" id="searchClear" style="display:none">Clear</button>
+      <span id="searchStatus" style="font-size:12px;color:var(--muted)"></span>
+    </form>
+    <div id="searchResults" class="table-wrap" style="display:none;margin-top:12px"></div>
+  </section>
+
+  <div id="error"></div>
+
+  <div id="stats" class="grid" style="display:none"></div>
+
+  <section id="sec-insights">
+    <h2>Automated Insights</h2>
+    <div class="meta">Rule-based pattern detection on the data above — not AI-generated, just arithmetic. Use "Copy for AI Analysis" below for a genuine LLM narrative.</div>
+    <div id="insights-list" style="margin-top:10px"></div>
+    <button type="button" class="small" style="margin-top:14px" onclick="copyForAIAnalysis()">Copy for AI Analysis</button>
+    <span id="copy-status" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
+    <textarea id="ai-analysis-fallback" readonly style="display:none;width:100%;height:200px;margin-top:10px;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--border);border-radius:2px"></textarea>
+  </section>
+
+  <section id="sec-burndown">
+    <h2>Sprint burndown status</h2>
+    <div class="meta" id="meta-burndown"></div>
+    <div style="height:220px"><canvas id="chart-burndown"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px">"Actual" only has one point the first time you run this in a sprint — it fills in day by day as you keep loading the dashboard.</div>
+  </section>
+
+  <section id="sec-dev-burndown">
+    <h2>Development sprint burndown</h2>
+    <div class="meta" id="meta-dev-burndown"></div>
+    <div style="height:220px"><canvas id="chart-dev-burndown"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px" id="dev-burndown-footnote">"Actual" only has one point the first time you run this in a sprint — it fills in day by day as you keep loading the dashboard.</div>
+  </section>
+
+  <section id="sec-completion-trend">
+    <h2>Completion trend — last 14 days</h2>
+    <div class="meta">How many items closed out each day</div>
+    <div style="height:220px"><canvas id="chart-completion-trend"></canvas></div>
+  </section>
+
+  <section id="sec-completed">
+    <h2>Completed in the last 24 hours</h2>
+    <div class="meta" id="meta-completed"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-completed"></tbody></table></div>
+  </section>
+
+  <section id="sec-reopened">
+    <h2>Reopened items this week (previously Done, now not)</h2>
+    <div class="meta" id="meta-reopened"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-reopened"></tbody></table></div>
+  </section>
+
+  <section id="sec-blocked">
+    <h2>Blocked items</h2>
+    <div class="meta" id="meta-blocked"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-blocked"></tbody></table></div>
+  </section>
+
+  <section id="sec-sprint">
+    <h2 id="title-sprint">Current sprint</h2>
+    <div class="meta" id="meta-sprint"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-sprint"></tbody></table></div>
+  </section>
+
+  <section id="sec-comments">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>Recent comments — all open items</h2>
+      <button type="button" onclick="exportComments()" style="padding:7px 12px;font-size:11px">📄 Export</button>
+    </div>
+    <div id="print-comments-header" style="display:none">
+      <h1 style="margin-bottom:2px">Unanswered Comments Report</h1>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:16px" id="print-comments-date"></div>
+    </div>
+    <div class="meta" id="meta-comments">Every open, assigned item across the project — excludes Done/Closed/Removed. Checking comments needs one lookup per item, so this is capped to keep load times reasonable.</div>
+
+    <h3 style="font-size:13px;margin:18px 0 8px 0">Summary by area — who needs to respond</h3>
+    <div class="table-wrap"><table><thead><tr><th>Area Path</th><th>Unanswered</th><th>Needs Response From</th></tr></thead>
+    <tbody id="rows-comments-area-summary"></tbody></table></div>
+
+    <h3 style="font-size:13px;margin:18px 0 8px 0">All items</h3>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Last Comment</th><th>By</th><th>Age (d)</th><th>Status</th><th>Needs Response From</th></tr></thead>
+    <tbody id="rows-comments"></tbody></table></div>
+  </section>
+
+  <section id="sec-carryover">
+    <h2 id="title-carryover">Carried over from previous sprint</h2>
+    <div class="meta" id="meta-carryover"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-carryover"></tbody></table></div>
+  </section>
+
+  <section id="sec-weekly">
+    <h2>Completed this week</h2>
+    <div class="meta" id="meta-weekly"></div>
+    <div style="height:200px;margin-bottom:16px"><canvas id="chart-weekly-area"></canvas></div>
+    <table style="margin-bottom:20px"><thead><tr><th>Area Path</th><th>Completed this week</th></tr></thead>
+    <tbody id="rows-weekly-area"></tbody></table>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-weekly"></tbody></table></div>
+  </section>
+
+  <section id="sec-team-performance">
+    <h2>Weekly Team Performance</h2>
+    <div class="meta">
+      Area path:
+      <select id="perfAreaSelect" onchange="renderTeamPerformance()" style="margin-left:6px;padding:6px 8px;border:1px solid var(--border);border-radius:2px;background:#fafafa;font-size:13px">
+        <option value="">All areas</option>
+      </select>
+    </div>
+    <div id="perf-stats" class="grid" style="margin:16px 0"></div>
+    <div style="height:220px"><canvas id="chart-perf-trend"></canvas></div>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px" id="perf-status"></div>
+
+    <h2 style="margin-top:24px">Defect Leakage — Open</h2>
+    <div class="meta" id="meta-leakage"></div>
+    <div id="leakage-env-stats" class="grid" style="margin-bottom:16px"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Client</th><th>Developer</th><th>Environment</th><th>Testing Status</th><th>Age (days)</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-leakage"></tbody></table></div>
+  </section>
+
+  <section id="sec-workload">
+    <h2>Workload by developer</h2>
+    <div class="meta" id="meta-workload"></div>
+    <div class="field" style="max-width:420px;margin-bottom:14px">
+      <label>Exclude from workload (comma-separated names — e.g. departed staff)</label>
+      <input id="excludeAssignees" placeholder="e.g. Osman, Azeem" onchange="saveExcludeAssignees()">
+    </div>
+    <div style="height:220px;margin-bottom:16px"><canvas id="chart-workload"></canvas></div>
+    <table><thead><tr><th>Developer</th><th>Items assigned</th></tr></thead>
+    <tbody id="rows-workload"></tbody></table>
+    <div style="color:var(--muted);font-size:11px;margin-top:8px">Click a developer's row to see exactly which items are being counted, so you can verify against Azure DevOps directly.</div>
+  </section>
+
+  <section id="sec-excluded-items">
+    <h2>Still assigned to excluded names</h2>
+    <div class="meta" id="meta-excluded-items"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-excluded-items"></tbody></table></div>
+  </section>
+
+  <section id="sec-area">
+    <h2>Open work by area path (full project)</h2>
+    <div class="meta" id="meta-area">Where all open work across the project is concentrated</div>
+    <div style="height:240px;max-width:400px;margin:0 auto 16px"><canvas id="chart-area"></canvas></div>
+    <table><thead><tr><th>Area Path</th><th>Items</th></tr></thead>
+    <tbody id="rows-area"></tbody></table>
+  </section>
+
+  <section id="sec-backlog-age">
+    <h2>Backlog age distribution</h2>
+    <div class="meta">Bugs, issues, and carried-over sprint items — how long they've sat in their current state</div>
+    <div style="height:220px"><canvas id="chart-backlog-age"></canvas></div>
+  </section>
+
+  <section id="sec-bugs">
+    <h2>Outstanding bug backlog</h2>
+    <div class="meta" id="meta-bugs"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-bugs"></tbody></table></div>
+  </section>
+
+  <section id="sec-issues">
+    <h2>Outstanding issues</h2>
+    <div class="meta" id="meta-issues"></div>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Area</th><th>Assigned To</th><th>Age (d)</th><th>Blocked</th><th>Last Changed</th></tr></thead>
+    <tbody id="rows-issues"></tbody></table></div>
+  </section>
+
+<script>
+let lastReport = null; // populated after a successful load, used by sendReport()
+let workItemBaseUrl = ''; // set at the start of each load, used by rowsHtml() to link IDs
+const AGING_THRESHOLD_DAYS = 5;
+const SECTION_KEYS = ['insights','burndown','devBurndown','completed','reopened','blocked','sprint','carryover','weekly','teamPerformance','workload','area','bugs','issues','completionTrend','backlogAge','comments'];
+
+// ---- tiny storage wrapper: plain localStorage, so this works the same
+// whether opened as a local file or hosted somewhere like GitHub Pages ----
+const storage = {
+  get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) {} },
+};
+
+function restoreConfig() {
+  const raw = storage.get('ado-config');
+  if (!raw) return;
+  try {
+    const cfg = JSON.parse(raw);
+    document.getElementById('org').value = cfg.org || '';
+    document.getElementById('project').value = cfg.project || '';
+    document.getElementById('team').value = cfg.team || '';
+    document.getElementById('recipient').value = cfg.recipient || '';
+    document.getElementById('remember').checked = true;
+  } catch (e) {}
+}
+
+let profiles = {};
+function loadProfiles() {
+  const raw = storage.get('ado-profiles');
+  try { profiles = raw ? JSON.parse(raw) : {}; } catch (e) { profiles = {}; }
+  renderProfileOptions();
+}
+function renderProfileOptions() {
+  const sel = document.getElementById('profileSelect');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- New / unsaved --</option>' +
+    Object.keys(profiles).sort().map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.value = profiles[current] ? current : '';
+}
+function applyProfile(name) {
+  if (!name || !profiles[name]) { return; }
+  const p = profiles[name];
+  document.getElementById('org').value = p.org || '';
+  document.getElementById('project').value = p.project || '';
+  document.getElementById('team').value = p.team || '';
+  document.getElementById('recipient').value = p.recipient || '';
+  document.getElementById('profileName').value = name;
+}
+function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  if (!name) { showError('Give this profile a name first, then click Save.'); return; }
+  profiles[name] = {
+    org: document.getElementById('org').value.trim(),
+    project: document.getElementById('project').value.trim(),
+    team: document.getElementById('team').value.trim(),
+    recipient: document.getElementById('recipient').value.trim(),
+  };
+  storage.set('ado-profiles', JSON.stringify(profiles));
+  renderProfileOptions();
+  document.getElementById('profileSelect').value = name;
+  setStatus(`Saved profile "${name}".`);
+}
+function deleteProfile() {
+  const sel = document.getElementById('profileSelect');
+  const name = sel.value;
+  if (!name) return;
+  delete profiles[name];
+  storage.set('ado-profiles', JSON.stringify(profiles));
+  renderProfileOptions();
+  document.getElementById('profileName').value = '';
+  setStatus(`Deleted profile "${name}".`);
+}
+
+function restoreSectionPrefs() {
+  const raw = storage.get('ado-section-prefs');
+  if (!raw) return;
+  try {
+    const prefs = JSON.parse(raw);
+    SECTION_KEYS.forEach(k => { const el = document.getElementById('show-' + k); if (el && k in prefs) el.checked = prefs[k]; });
+  } catch (e) {}
+}
+function saveSectionPrefs() {
+  const prefs = {};
+  SECTION_KEYS.forEach(k => { const el = document.getElementById('show-' + k); if (el) prefs[k] = el.checked; });
+  storage.set('ado-section-prefs', JSON.stringify(prefs));
+}
+function shown(key) {
+  const el = document.getElementById('show-' + key);
+  return el ? el.checked : true;
+}
+
+function getExcludedAssignees() {
+  return document.getElementById('excludeAssignees').value
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+function restoreExcludeAssignees() {
+  const raw = storage.get('ado-exclude-assignees');
+  if (raw) document.getElementById('excludeAssignees').value = raw;
+}
+function saveExcludeAssignees() {
+  storage.set('ado-exclude-assignees', document.getElementById('excludeAssignees').value);
+}
+
+restoreConfig();
+loadProfiles();
+
+// ---- shared login: pull org/project/team/PAT from the session set on
+// the login screen, then load automatically ----
+(function () {
+  const session = ADOSession.requireSession();
+  if (!session) return;
+  ADONav.updateConnection(session);
+  ADOSession.hydrateInputs({ org: 'org', project: 'project', team: 'team', pat: 'pat' });
+  loadDashboard();
+})();
+restoreSectionPrefs();
+restoreExcludeAssignees();
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; ADOLoader.setText(msg); }
+
+function exportComments() {
+  const dateStr = new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('print-comments-date').textContent = `Generated ${dateStr}`;
+  document.body.classList.add('printing-comments-only');
+  window.print();
+}
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('printing-comments-only');
+});
+
+function showError(html) {
+  ADOLoader.hide();
+  const el = document.getElementById('error');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function clearError() { document.getElementById('error').style.display = 'none'; }
+
+async function readAdoErrorDetail(res) {
+  try {
+    const j = await res.json();
+    return j.message || JSON.stringify(j);
+  } catch (e) {
+    try { return await res.text(); } catch (e2) { return ''; }
+  }
+}
+
+async function adoGet(url) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+  } catch (err) {
+    throw new Error('CORS_OR_NETWORK');
+  }
+  if (!res.ok) {
+    const detail = await readAdoErrorDetail(res);
+    const e = new Error(`HTTP_${res.status}`);
+    e.detail = detail;
+    e.url = url;
+    throw e;
+  }
+  return res.json();
+}
+
+async function adoPost(url, body) {
+  const pat = document.getElementById('pat').value;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error('CORS_OR_NETWORK');
+  }
+  if (!res.ok) {
+    const detail = await readAdoErrorDetail(res);
+    const e = new Error(`HTTP_${res.status}`);
+    e.detail = detail;
+    e.url = url;
+    throw e;
+  }
+  return res.json();
+}
+
+async function wiql(projectBase, queryText, label) {
+  try {
+    return await adoPost(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: queryText });
+  } catch (err) {
+    if (err.message && err.message.startsWith('HTTP_')) {
+      err.wiqlLabel = label;
+      err.wiqlQuery = queryText;
+    }
+    throw err;
+  }
+}
+
+function field(item, name, def = '') {
+  const val = (item.fields || {})[name];
+  if (val == null || val === '') return def;
+  if (typeof val === 'object') {
+    return val.displayName || val.uniqueName || val.name || def;
+  }
+  const match = String(val).match(/^(.*?)\s*<.*>$/);
+  return match ? match[1].trim() : String(val);
+}
+
+function isBlocked(item) {
+  return field(item, 'System.Tags', '').toLowerCase().includes('blocked');
+}
+
+// ADO's own state-category metadata can be wrong for a given process (confirmed:
+// this org's Bug type has a "Closed" state that ADO itself doesn't tag as
+// "Completed"). So alongside the category check, also treat these literal state
+// names as terminal regardless of what category ADO reports for them.
+const LITERAL_COMPLETED_STATES = ['Closed', 'Done'];
+const LITERAL_REMOVED_STATES = ['Removed'];
+
+function isCompletedState(item, typeStateMap) {
+  const t = field(item, 'System.WorkItemType');
+  const s = field(item, 'System.State');
+  if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(s.toLowerCase())) return true;
+  return (typeStateMap[t] || {})[s] === 'Completed';
+}
+function isTerminalState(item, typeStateMap) {
+  const t = field(item, 'System.WorkItemType');
+  const s = field(item, 'System.State');
+  const sLower = s.toLowerCase();
+  if ([...LITERAL_COMPLETED_STATES, ...LITERAL_REMOVED_STATES].map(x => x.toLowerCase()).includes(sLower)) return true;
+  const cat = (typeStateMap[t] || {})[s];
+  return cat === 'Completed' || cat === 'Removed';
+}
+
+function daysAgo(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+
+function buildStateClause(typeStateMap, category, negate) {
+  const groups = [];
+  for (const [wit, states] of Object.entries(typeStateMap)) {
+    const matching = Object.entries(states).filter(([, cat]) => cat === category).map(([s]) => s);
+    if (matching.length) {
+      const list = matching.map(s => `'${s}'`).join(',');
+      groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] IN (${list}))`);
+    }
+  }
+  if (!groups.length) return negate ? '(1=1)' : '(1=0)';
+  const clause = groups.join(' OR ');
+  return negate ? `NOT (${clause})` : `(${clause})`;
+}
+
+// Belt-and-suspenders clause matching literal state names directly, independent
+// of work item type or ADO's (possibly wrong) category tagging.
+function buildLiteralStateClause(stateNames) {
+  if (!stateNames.length) return '(1=0)';
+  return `[System.State] IN (${stateNames.map(s => `'${s}'`).join(',')})`;
+}
+
+// Raw WIQL uses the single keyword EVER (the "Was Ever" label only shows up
+// in the visual Query Editor UI, not the query language itself).
+function buildEverCompletedClause(typeStateMap) {
+  const groups = [];
+  const seenStateNames = new Set();
+  for (const [wit, states] of Object.entries(typeStateMap)) {
+    Object.entries(states).filter(([, c]) => c === 'Completed').forEach(([s]) => {
+      groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] EVER '${s}')`);
+      seenStateNames.add(s.toLowerCase());
+    });
+    // Also cover literal Closed/Done states even if ADO didn't tag them Completed
+    Object.keys(states).forEach(s => {
+      if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(s.toLowerCase()) && !seenStateNames.has(s.toLowerCase())) {
+        groups.push(`([System.WorkItemType] = '${wit}' AND [System.State] EVER '${s}')`);
+        seenStateNames.add(s.toLowerCase());
+      }
+    });
+  }
+  if (!groups.length) return '(1=0)';
+  return `(${groups.join(' OR ')})`;
+}
+
+function rowsHtml(items) {
+  if (!items.length) return `<tr><td colspan="9" class="empty">Nothing here</td></tr>`;
+  return items
+    .slice()
+    .sort((a, b) => (field(b, 'System.ChangedDate') > field(a, 'System.ChangedDate') ? 1 : -1))
+    .map(it => {
+      const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+      const age = daysAgo(field(it, 'System.ChangedDate'));
+      const ageCell = age === null ? '' : `<span style="${age > AGING_THRESHOLD_DAYS ? 'color:var(--bad);font-weight:700' : ''}">${age}</span>`;
+      const blockedCell = isBlocked(it) ? `<span class="badge badge-bad">Blocked</span>` : '';
+      const area = field(it, 'System.AreaPath', '');
+      const idCell = workItemBaseUrl
+        ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+        : `#${it.id}`;
+      return `<tr><td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${field(it, 'System.WorkItemType')}</td>
+        <td><span class="badge">${field(it, 'System.State')}</span></td><td>${area}</td><td>${field(it, 'System.AssignedTo', 'Unassigned')}</td>
+        <td>${ageCell}</td><td>${blockedCell}</td><td>${changed}</td></tr>`;
+    }).join('');
+}
+
+async function getItems(base, ids, fields) {
+  if (!ids.length) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const data = await adoPost(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: chunk, fields });
+    out.push(...data.value);
+  }
+  return out;
+}
+
+const CHART_PALETTE = ['#3f51b5', '#00897b', '#f4511e', '#8e24aa', '#43a047', '#fb8c00', '#546e7a', '#c62828', '#00acc1', '#6d4c41'];
+let charts = {}; // keep Chart.js instances so we can destroy/recreate on each reload
+
+function renderBarChart(canvasId, labels, data, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color }] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+function renderPieChart(canvasId, labels, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: CHART_PALETTE.slice(0, Math.max(labels.length, 1)) }] },
+    options: { maintainAspectRatio: false },
+  });
+}
+
+function renderLineChart(canvasId, labels, datasets) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+function fmtDelta(delta, goodWhenUp) {
+  if (delta === null || delta === undefined) return '';
+  if (delta === 0) return `<div class="delta" style="color:var(--muted)">no change vs prior run</div>`;
+  const up = delta > 0;
+  let color = 'var(--muted)';
+  if (goodWhenUp !== null) {
+    const good = goodWhenUp ? up : !up;
+    color = good ? 'var(--good)' : 'var(--bad)';
+  }
+  return `<div class="delta" style="color:${color}">${up ? '+' : ''}${delta} vs prior run</div>`;
+}
+
+function summarizeItems(items, limit) {
+  if (!items.length) return '  (none)\n';
+  const shown = items.slice(0, limit);
+  let out = shown.map(it =>
+    `  #${it.id} ${field(it, 'System.Title')} [${field(it, 'System.State')}] - ${field(it, 'System.AssignedTo', 'Unassigned')}`
+  ).join('\n') + '\n';
+  if (items.length > limit) out += `  ...and ${items.length - limit} more (see the dashboard for the full list)\n`;
+  return out;
+}
+
+// ---- Weekly Team Performance (filtered by area path dropdown) ----
+let perfData = null; // set once per successful load; used by renderTeamPerformance()
+
+function itemsInArea(items, areaPath) {
+  if (!areaPath) return items;
+  return items.filter(it => {
+    const a = field(it, 'System.AreaPath', '');
+    return a === areaPath || a.startsWith(areaPath + '\\');
+  });
+}
+
+function populatePerfAreaOptions(areaPaths) {
+  const sel = document.getElementById('perfAreaSelect');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All areas</option>' +
+    areaPaths.sort().map(a => `<option value="${a.replace(/"/g, '&quot;')}">${a}</option>`).join('');
+  if (areaPaths.includes(current)) sel.value = current;
+}
+
+// Cross-checks each item's actual revision history so "reopened" means a real
+// Completed -> active -> Completed cycle, not a guess based on current state.
+async function computeReopenRate(items, base, typeStateMap) {
+  if (!items.length) return { rate: null, reopenedCount: 0, total: 0, failed: 0 };
+  let reopenedCount = 0;
+  let failed = 0;
+  await Promise.all(items.map(async (it) => {
+    const witType = field(it, 'System.WorkItemType');
+    try {
+      const data = await adoGet(`${base}/_apis/wit/workitems/${it.id}/updates?api-version=7.1`);
+      let completedTransitions = 0;
+      (data.value || []).forEach(rev => {
+        const sc = rev.fields && rev.fields['System.State'];
+        if (sc && sc.newValue) {
+          const cat = (typeStateMap[witType] || {})[sc.newValue];
+          if (cat === 'Completed') completedTransitions++;
+        }
+      });
+      if (completedTransitions >= 2) reopenedCount++;
+    } catch (e) {
+      failed++;
+    }
+  }));
+  return { rate: (reopenedCount / items.length) * 100, reopenedCount, total: items.length, failed };
+}
+
+// Runs async worker(item) over items with at most `limit` in flight at once —
+// keeps us from firing hundreds of simultaneous requests at Azure DevOps.
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function run() {
+    while (idx < items.length) {
+      const cur = idx++;
+      try { results[cur] = await worker(items[cur], cur); }
+      catch (e) { results[cur] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+// Finds the date an item actually transitioned into a Completed-category state
+// (or a literal Closed/Done state), by walking its revision history — NOT the
+// same as System.ChangedDate, which gets bumped by any field edit (comments,
+// tags, links, description, etc.) even long after the completion happened.
+// Returns null if no such transition is found in history (e.g. created
+// directly into a completed state).
+async function findActualCompletionDate(item, base, typeStateMap) {
+  const witType = field(item, 'System.WorkItemType');
+  try {
+    const data = await adoGet(`${base}/_apis/wit/workitems/${item.id}/updates?api-version=7.1`);
+    const completedUpdates = (data.value || []).filter(rev => {
+      const sc = rev.fields && rev.fields['System.State'];
+      const newState = sc && sc.newValue;
+      if (!newState) return false;
+      if (LITERAL_COMPLETED_STATES.map(x => x.toLowerCase()).includes(newState.toLowerCase())) return true;
+      return (typeStateMap[witType] || {})[newState] === 'Completed';
+    });
+    const last = completedUpdates[completedUpdates.length - 1];
+    return last && last.fields['System.ChangedDate'] ? last.fields['System.ChangedDate'].newValue : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function renderTeamPerformance() {
+  if (!perfData) return;
+  const areaPath = document.getElementById('perfAreaSelect').value;
+  const { fourWeekItems, weeklyItems, base, typeStateMap, leakageItems, leakageFieldsFound, leakageStatusNote } = perfData;
+  const filteredWeekly = itemsInArea(weeklyItems, areaPath);
+  const filteredFourWeek = itemsInArea(fourWeekItems, areaPath);
+
+  const cycleTimes = filteredWeekly
+    .map(it => {
+      const created = field(it, 'System.CreatedDate');
+      const changed = field(it, 'System.ChangedDate');
+      if (!created || !changed) return null;
+      return (new Date(changed) - new Date(created)) / 86400000;
+    })
+    .filter(v => v !== null && v >= 0);
+  const avgCycleTime = cycleTimes.length ? (cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length) : null;
+
+  const statsHtml = `
+    <div class="stat"><div class="num" style="color:var(--good)">${filteredWeekly.length}</div><div class="label">Completed this week</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent)">${avgCycleTime !== null ? avgCycleTime.toFixed(1) : '—'}</div><div class="label">Avg cycle time (days)</div></div>
+    <div class="stat" id="perf-reopen-stat"><div class="num" style="color:var(--muted)">…</div><div class="label">Reopen rate</div></div>
+  `;
+  document.getElementById('perf-stats').innerHTML = statsHtml;
+
+  // 4-week trend, bucketed Monday-to-Sunday, oldest to newest
+  const now2 = new Date();
+  const dsm2 = (now2.getDay() + 6) % 7;
+  const thisWeekStart = new Date(now2.getTime() - dsm2 * 86400000);
+  const counts = [0, 0, 0, 0]; // 0 = this week, 3 = three weeks ago
+  filteredFourWeek.forEach(it => {
+    const completed = new Date(field(it, '_ActualCompletedDate') || field(it, 'System.ChangedDate'));
+    const weeksAgo = Math.max(0, Math.min(3, Math.floor((thisWeekStart - completed) / (7 * 86400000))));
+    counts[weeksAgo]++;
+  });
+  renderLineChart('chart-perf-trend', ['3 weeks ago', '2 weeks ago', 'Last week', 'This week'], [
+    { label: 'Completed', data: [counts[3], counts[2], counts[1], counts[0]], borderColor: '#3f51b5', backgroundColor: 'rgba(63,81,181,0.15)', fill: true, tension: 0.3 },
+  ]);
+
+  document.getElementById('perf-status').textContent = filteredWeekly.length
+    ? `Checking revision history for ${filteredWeekly.length} item(s) to calculate a real reopen rate...`
+    : '';
+
+  const { rate, reopenedCount, total, failed } = await computeReopenRate(filteredWeekly, base, typeStateMap);
+  const reopenCell = document.querySelector('#perf-reopen-stat .num');
+  if (reopenCell) {
+    reopenCell.textContent = rate === null ? '—' : `${rate.toFixed(0)}%`;
+    reopenCell.style.color = rate && rate > 0 ? 'var(--bad)' : 'var(--good)';
+  }
+  document.getElementById('perf-status').textContent = total
+    ? `${reopenedCount} of ${total} item(s) completed this week show a genuine reopen (Completed → active → Completed) in their history.` +
+      (failed ? ` (${failed} item(s) couldn't be checked.)` : '')
+    : 'Nothing completed this week for this area yet.';
+
+  // ---- Defect leakage ----
+  if (leakageStatusNote) {
+    document.getElementById('meta-leakage').textContent = leakageStatusNote;
+    document.getElementById('leakage-env-stats').innerHTML = '';
+    document.getElementById('rows-leakage').innerHTML = '<tr><td colspan="8" class="empty">Not available</td></tr>';
+  } else {
+    // No date filter here — this now shows every leaked defect that hasn't
+    // been resolved yet (the WIQL query already excludes Completed/Removed
+    // states), regardless of how long ago it leaked.
+    const filteredLeakage = itemsInArea(leakageItems, areaPath);
+
+    const envCounts = { Dev: 0, QA: 0, UAT: 0 };
+    filteredLeakage.forEach(it => {
+      const status = field(it, leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      if (env in envCounts) envCounts[env]++;
+    });
+    document.getElementById('leakage-env-stats').innerHTML = `
+      <div class="stat"><div class="num" style="color:var(--warn)">${envCounts.Dev}</div><div class="label">Leaked to Dev</div></div>
+      <div class="stat"><div class="num" style="color:var(--warn)">${envCounts.QA}</div><div class="label">Leaked to QA</div></div>
+      <div class="stat"><div class="num" style="color:var(--bad)">${envCounts.UAT}</div><div class="label">Leaked to UAT</div></div>
+    `;
+    document.getElementById('meta-leakage').textContent = `${filteredLeakage.length} open defect(s) leaked and not yet resolved` +
+      (!leakageFieldsFound.client || !leakageFieldsFound.developer
+        ? ' (Client and/or Developer field not found on QA Test Case — showing what\'s available)' : '');
+
+    document.getElementById('rows-leakage').innerHTML = filteredLeakage.length
+      ? filteredLeakage
+          // oldest (longest still open) first, so the most neglected leaks surface at the top
+          .sort((a, b) => new Date(field(a, 'System.CreatedDate')) - new Date(field(b, 'System.CreatedDate')))
+          .map(it => {
+            const status = field(it, leakageFieldsFound.testingStatus, '');
+            const env = status.replace('Test Failure - ', '').trim();
+            const client = leakageFieldsFound.client ? field(it, leakageFieldsFound.client, '—') : '—';
+            const developer = leakageFieldsFound.developer ? field(it, leakageFieldsFound.developer, '—') : '—';
+            const age = daysAgo(field(it, 'System.CreatedDate'));
+            const changed = (field(it, 'System.ChangedDate') || '').slice(0, 16).replace('T', ' ');
+            const idCell = workItemBaseUrl
+              ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>`
+              : `#${it.id}`;
+            return `<tr><td>${idCell}</td><td>${field(it, 'System.Title')}</td><td>${client}</td><td>${developer}</td>
+              <td><span class="badge badge-bad">${env}</span></td><td>${status}</td><td>${age == null ? '—' : age}</td><td>${changed}</td></tr>`;
+          }).join('')
+      : '<tr><td colspan="8" class="empty">No open defect leakage for this area</td></tr>';
+  }
+}
+
+// Looks up a field's real reference name by its display name (case-insensitive,
+// tries multiple candidate labels). Avoids hardcoding a guessed reference name
+// for org-specific custom fields like "Testing Status", "Client", "Developer".
+async function discoverFieldReferenceName(projectBase, workItemType, displayNameCandidates) {
+  try {
+    const data = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(workItemType)}/fields?api-version=7.1`);
+    const lower = displayNameCandidates.map(c => c.toLowerCase());
+    const match = data.value.find(f => lower.includes((f.name || '').toLowerCase()));
+    return match ? match.referenceName : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---- Search by work item ID or TMT number ----
+let _tmtFieldRef; // undefined = not looked up yet, null = no TMT field found
+const escS = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function clearSearch() {
+  document.getElementById('searchQuery').value = '';
+  document.getElementById('searchResults').style.display = 'none';
+  document.getElementById('searchClear').style.display = 'none';
+  document.getElementById('searchStatus').textContent = '';
+}
+async function findTmtField(base, projectBase) {
+  if (_tmtFieldRef !== undefined) return _tmtFieldRef;
+  const names = ['TMT number', 'TMT Number', 'TMT No', 'TMT ID', 'TMT'];
+  try {
+    const types = (await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`)).value.filter(t => !t.isDisabled).map(t => t.name);
+    for (const t of types) {
+      const f = await discoverFieldReferenceName(projectBase, t, names);
+      if (f) { _tmtFieldRef = f; return f; }
+    }
+  } catch (e) { return null; } // don't cache a network failure
+  _tmtFieldRef = null;
+  return null;
+}
+async function searchWorkItems() {
+  const status = document.getElementById('searchStatus');
+  const out = document.getElementById('searchResults');
+  const raw = document.getElementById('searchQuery').value.trim();
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  if (!raw) { status.textContent = 'Enter a work item ID or TMT number.'; return; }
+  if (!org || !project || !document.getElementById('pat').value.trim()) { status.textContent = 'Not signed in: set up your connection first.'; return; }
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const itemUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+  document.getElementById('searchBtn').disabled = true;
+  status.textContent = 'Searching…';
+  try {
+    const q = raw.replace(/^\s*(wi|work\s*item)[\s:#-]*/i, '').replace(/^#/, '').trim() || raw;
+    const isNum = /^\d+$/.test(q);
+    const tmtField = await findTmtField(base, projectBase);
+    const cols = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.IterationPath', 'System.TeamProject', 'System.ChangedDate'];
+    if (tmtField) cols.push(tmtField);
+    const found = new Map(); // id -> { item, by: Set }
+    const add = (it, by) => { const e = found.get(it.id) || { item: it, by: new Set() }; e.by.add(by); found.set(it.id, e); };
+
+    if (isNum) {
+      try {
+        const it = await adoGet(`${base}/_apis/wit/workitems/${q}?fields=${cols.map(encodeURIComponent).join(',')}&api-version=7.1`);
+        add(it, 'Work item ID');
+      } catch (e) { if (!/HTTP_404/.test(e.message || '')) throw e; }
+    }
+    if (tmtField) {
+      const lit = q.replace(/'/g, "''");
+      const run = async (cond) => {
+        const r = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE ${cond}`, 'Search by TMT');
+        return (r.workItems || []).map(w => w.id).slice(0, 50);
+      };
+      let ids = [];
+      try { ids = await run(`[${tmtField}] CONTAINS '${lit}'`); }
+      catch (e) { if (isNum) { try { ids = await run(`[${tmtField}] = ${q}`); } catch (e2) {} } else if (!/HTTP_400/.test(e.message || '')) throw e; }
+      (await getItems(base, ids, cols)).forEach(it => add(it, 'TMT'));
+    }
+    const rows = [...found.values()];
+    document.getElementById('searchClear').style.display = '';
+    out.style.display = 'block';
+    if (!rows.length) {
+      out.innerHTML = `<div class="meta" style="margin:0">No work item found for "${escS(q)}".${tmtField ? '' : ' (No TMT field was found in this project, so only work item IDs can be searched.)'}</div>`;
+      status.textContent = '';
+    } else {
+      out.innerHTML = `<table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned To</th><th>Iteration</th><th>TMT</th><th>Matched by</th><th>Last Changed</th></tr></thead><tbody>` +
+        rows.map(({ item: it, by }) => {
+          const iter = field(it, 'System.IterationPath');
+          return `<tr><td><a href="${itemUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a></td>` +
+            `<td>${escS(field(it, 'System.Title'))}</td><td>${escS(field(it, 'System.WorkItemType'))}</td><td>${escS(field(it, 'System.State'))}</td>` +
+            `<td>${escS(field(it, 'System.AssignedTo', 'Unassigned'))}</td><td>${escS(iter ? iter.split('\\').pop() : '')}</td>` +
+            `<td>${escS(tmtField ? field(it, tmtField, '—') : '—')}</td><td>${[...by].join(' + ')}</td><td>${escS((field(it, 'System.ChangedDate') || '').slice(0, 10))}</td></tr>`;
+        }).join('') + `</tbody></table>`;
+      status.textContent = `${rows.length} result(s)`;
+    }
+  } catch (e) {
+    status.textContent = e.message === 'CORS_OR_NETWORK' ? 'Could not reach Azure DevOps.' : `Search failed (${e.message || 'error'}).`;
+  } finally {
+    document.getElementById('searchBtn').disabled = false;
+  }
+}
+
+// ---- Automated Insights: rule-based pattern detection on already-fetched data ----
+function renderInsights(d) {
+  const insights = [];
+
+  // Chronic backlog aging
+  const chronicCount = d.backlogAgeBuckets['10+ days'] || 0;
+  if (chronicCount > 0) {
+    const chronicByArea = {};
+    [...d.bugItems, ...d.issueItems, ...d.carryoverItems].forEach(it => {
+      if ((daysAgo(field(it, 'System.ChangedDate')) || 0) > 10) {
+        const a = field(it, 'System.AreaPath', '(no area path)');
+        chronicByArea[a] = (chronicByArea[a] || 0) + 1;
+      }
+    });
+    const topArea = Object.entries(chronicByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'bad',
+      text: `${chronicCount} item(s) have sat unchanged for 10+ days — a sign of chronic backlog buildup rather than active issues.` +
+        (topArea ? ` Most concentrated in <strong>${topArea[0]}</strong> (${topArea[1]} item(s)).` : ''),
+    });
+  }
+
+  // Blocked concentration
+  if (d.blockedItems.length > 0) {
+    const blockedByArea = {};
+    d.blockedItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      blockedByArea[a] = (blockedByArea[a] || 0) + 1;
+    });
+    const topBlocked = Object.entries(blockedByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'warn',
+      text: `${d.blockedItems.length} item(s) currently marked blocked.` +
+        (topBlocked ? ` <strong>${topBlocked[0]}</strong> has the most (${topBlocked[1]}) — worth checking what's holding them up.` : ''),
+    });
+  }
+
+  // Workload imbalance
+  const workloadValues = Object.entries(d.workload).filter(([dev]) => dev !== 'Unassigned');
+  if (workloadValues.length >= 2) {
+    const avg = workloadValues.reduce((s, [, c]) => s + c, 0) / workloadValues.length;
+    const [topDev, topCount] = workloadValues.sort((a, b) => b[1] - a[1])[0];
+    if (topCount > avg * 2) {
+      insights.push({
+        severity: 'warn',
+        text: `<strong>${topDev}</strong> is carrying ${topCount} open item(s), more than double the team average (${avg.toFixed(1)}) — possible bottleneck or single point of failure.`,
+      });
+    }
+  }
+
+  // Carryover concentration
+  if (d.carryoverItems.length > 0) {
+    const carryByArea = {};
+    d.carryoverItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      carryByArea[a] = (carryByArea[a] || 0) + 1;
+    });
+    const topCarry = Object.entries(carryByArea).sort((a, b) => b[1] - a[1])[0];
+    insights.push({
+      severity: 'warn',
+      text: `${d.carryoverItems.length} item(s) carried over from last sprint.` +
+        (topCarry ? ` <strong>${topCarry[0]}</strong> accounts for the most (${topCarry[1]}) — recurring carryover in one area usually points to underestimation or a recurring blocker there.` : ''),
+    });
+  }
+
+  // Bug-heavy areas (bug count as a share of that area's total open work)
+  if (d.bugItems.length > 0) {
+    const bugsByArea = {};
+    d.bugItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      bugsByArea[a] = (bugsByArea[a] || 0) + 1;
+    });
+    const ranked = Object.entries(bugsByArea)
+      .map(([area, bugCount]) => [area, bugCount, d.areaBreakdown[area] || bugCount])
+      .map(([area, bugCount, total]) => [area, bugCount, total ? bugCount / total : 0])
+      .sort((a, b) => b[2] - a[2]);
+    if (ranked.length && ranked[0][2] > 0.4 && ranked[0][1] >= 3) {
+      insights.push({
+        severity: 'bad',
+        text: `<strong>${ranked[0][0]}</strong> has a high bug concentration — ${ranked[0][1]} open bugs make up ${(ranked[0][2] * 100).toFixed(0)}% of that area's open work, worth a closer look at root cause rather than just triaging individually.`,
+      });
+    }
+  }
+
+  // Defect leakage hot spot — now reflects everything still open (not just
+  // this week), matching the Defect Leakage section above.
+  if (!d.leakageStatusNote && d.leakageItems && d.leakageItems.length > 0) {
+    const openLeaks = d.leakageItems;
+    const envCounts = {};
+    openLeaks.forEach(it => {
+      const status = field(it, d.leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      envCounts[env] = (envCounts[env] || 0) + 1;
+    });
+    const topEnv = Object.entries(envCounts).sort((a, b) => b[1] - a[1])[0];
+    const uatLeak = envCounts['UAT'] || 0;
+    insights.push({
+      severity: uatLeak > 0 ? 'bad' : 'warn',
+      text: `${openLeaks.length} open defect(s) leaked and not yet resolved` +
+        (topEnv ? `, most caught in <strong>${topEnv[0]}</strong> (${topEnv[1]}).` : '.') +
+        (uatLeak > 0 ? ` <strong>${uatLeak} reached UAT</strong> — these escaped both Dev and QA testing, the most expensive stage to catch defects.` : ''),
+    });
+  }
+
+  // Sprint risk
+  if (d.burndownStatusLabel === 'At risk') {
+    insights.push({ severity: 'bad', text: `Current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
+  }
+  if (d.devBurndownStatusLabel === 'At risk') {
+    insights.push({ severity: 'bad', text: `Development's current sprint is flagged <strong>at risk</strong> based on days remaining vs items still open.` });
+  }
+
+  // Unanswered comments
+  if (d.commentRows && d.commentRows.length) {
+    const unanswered = d.commentRows.filter(r => r.unanswered);
+    if (unanswered.length > 0) {
+      const stalest = unanswered.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+      const stalestAge = daysAgo(stalest.date);
+      insights.push({
+        severity: unanswered.length >= 3 ? 'bad' : 'warn',
+        text: `${unanswered.length} comment(s) across open items are awaiting a response from the assignee.` +
+          (stalestAge !== null ? ` The oldest has been sitting <strong>${stalestAge} day(s)</strong> (item #${stalest.item.id}).` : ''),
+      });
+    }
+  }
+
+  document.getElementById('insights-list').innerHTML = insights.length
+    ? insights.map(i => `<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--${i.severity});background:var(--${i.severity}-bg);border-radius:2px;font-size:13px">${i.text}</div>`).join('')
+    : `<div style="color:var(--muted);font-size:13px">Nothing stands out from the current data — no chronic aging, no workload imbalance, no blocked concentration detected.</div>`;
+}
+
+async function copyForAIAnalysis() {
+  if (!lastReport) return;
+  const r = lastReport;
+  const workloadLines = Object.entries(r.workload).sort((a, b) => b[1] - a[1]).map(([d, c]) => `  ${d}: ${c}`).join('\n') || '  (none)';
+  const areaLines = Object.entries(r.areaBreakdown).sort((a, b) => b[1] - a[1]).map(([a, c]) => `  ${a}: ${c}`).join('\n') || '  (none)';
+  const ageLines = Object.entries(r.backlogAgeBuckets).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+
+  let leakageSection = 'Not available';
+  if (!r.leakageStatusNote && r.leakageItems) {
+    const envCounts = {};
+    r.leakageItems.forEach(it => {
+      const status = field(it, r.leakageFieldsFound.testingStatus, '');
+      const env = status.replace('Test Failure - ', '').trim();
+      envCounts[env] = (envCounts[env] || 0) + 1;
+    });
+    leakageSection = Object.entries(envCounts).map(([e, c]) => `  ${e}: ${c}`).join('\n') || '  (none currently open)';
+  }
+
+  const prompt =
+`Analyze this Azure DevOps project data. I want you to identify recurring issues that point to bigger underlying problems, and suggest concrete process improvements. Look for patterns across areas, developers, and defect data rather than treating each number in isolation.
+
+=== SUMMARY ===
+Completed (24h): ${r.completedItems.length}
+Current sprint: ${r.sprintItems.length} item(s), status: ${r.burndownStatusLabel}
+Development sprint (${r.devCurrentIterName}): ${r.devSprintItems ? r.devSprintItems.length : 0} item(s), status: ${r.devBurndownStatusLabel || 'unknown'}
+Carried over from previous sprint: ${r.carryoverItems.length}
+Open bugs: ${r.bugItems.length}
+Open issues: ${r.issueItems.length}
+Blocked items: ${r.blockedItems.length}
+Reopened this week: ${r.reopenedItems.length}
+
+=== WORKLOAD BY DEVELOPER (open items) ===
+${workloadLines}
+
+=== OPEN WORK BY AREA PATH (full project) ===
+${areaLines}
+
+=== BACKLOG AGE DISTRIBUTION (bugs + issues + carryover) ===
+${ageLines}
+
+=== DEFECT LEAKAGE BY ENVIRONMENT (Test Failure - Dev/QA/UAT, currently open/unresolved) ===
+${leakageSection}
+
+=== BLOCKED ITEMS (sample, up to 15) ===
+${summarizeItems(r.blockedItems, 15)}
+
+=== CARRIED OVER FROM PREVIOUS SPRINT (sample, up to 15) ===
+${summarizeItems(r.carryoverItems, 15)}
+
+Please: 1) identify any recurring patterns that suggest a systemic issue rather than isolated incidents, 2) flag anything that looks like a process or resourcing risk, 3) suggest 2-3 concrete, specific actions.`;
+
+  try {
+    await navigator.clipboard.writeText(prompt);
+    document.getElementById('copy-status').textContent = 'Copied — paste it into a Claude conversation.';
+    document.getElementById('ai-analysis-fallback').style.display = 'none';
+  } catch (e) {
+    const fallback = document.getElementById('ai-analysis-fallback');
+    fallback.value = prompt;
+    fallback.style.display = 'block';
+    fallback.select();
+    document.getElementById('copy-status').textContent = 'Clipboard blocked by the browser — select the text below and copy manually.';
+  }
+}
+
+async function loadDashboard() {
+  clearError();
+  ADOLoader.show('Connecting to Azure DevOps…');
+  const org = document.getElementById('org').value.trim();
+  const project = document.getElementById('project').value.trim();
+  const team = document.getElementById('team').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const recipient = document.getElementById('recipient').value.trim();
+  const remember = document.getElementById('remember').checked;
+
+  if (!org || !project || !team || !pat) {
+    showError('Fill in organization, project, team, and PAT first.');
+    return;
+  }
+
+  if (remember) {
+    storage.set('ado-config', JSON.stringify({ org, project, team, recipient }));
+  }
+  saveSectionPrefs();
+
+  // Development's own team name, shared with Dev Planner / Resource
+  // Review's config (same localStorage key) so it doesn't need re-entering here.
+  let devTeamName = '';
+  try {
+    const raw = storage.get('ado-capacity-teamnames');
+    if (raw) devTeamName = (JSON.parse(raw).dev || '').trim();
+  } catch (e) {}
+
+  const btn = document.getElementById('loadBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  sendBtn.disabled = true;
+  setStatus('Connecting...');
+
+  const base = `https://dev.azure.com/${org}`;
+  const projectBase = `${base}/${project}`;
+  const teamBase = `${base}/${project}/${team}`;
+  workItemBaseUrl = `${base}/${encodeURIComponent(project)}/_workitems/edit/`;
+
+  try {
+    setStatus('Reading work item states...');
+    const witData = await adoGet(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`);
+    const witTypes = witData.value.filter(t => !t.isDisabled).map(t => t.name);
+
+    const typeStateMap = {};
+    for (const t of witTypes) {
+      const statesData = await adoGet(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+      typeStateMap[t] = Object.fromEntries(statesData.value.map(s => [s.name, s.category]));
+    }
+
+    const completedClause = `(${buildStateClause(typeStateMap, 'Completed', false)} OR ${buildLiteralStateClause(LITERAL_COMPLETED_STATES)})`;
+    const removedOrCompleted = `(${completedClause} OR ${buildStateClause(typeStateMap, 'Removed', false)} OR ${buildLiteralStateClause(LITERAL_REMOVED_STATES)})`;
+    const everCompletedClause = buildEverCompletedClause(typeStateMap);
+
+    let leakageItems = [];
+    let leakageFieldsFound = { testingStatus: null, client: null, developer: null };
+    let leakageStatusNote = '';
+    if (witTypes.includes('QA Test Case')) {
+      setStatus('Looking up defect leakage fields...');
+      const testingStatusField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Testing Status']);
+      const clientField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Client', 'Client Name']);
+      const developerField = await discoverFieldReferenceName(projectBase, 'QA Test Case', ['Developer', 'Developer Name']);
+      leakageFieldsFound = { testingStatus: testingStatusField, client: clientField, developer: developerField };
+
+      if (testingStatusField) {
+        const leakageFieldList = ['System.Id', 'System.Title', 'System.State', 'System.CreatedDate', 'System.ChangedDate', 'System.AreaPath', testingStatusField, clientField, developerField].filter(Boolean);
+        const leakWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                  WHERE [System.TeamProject] = '${project}'
+                  AND [System.WorkItemType] = 'QA Test Case'
+                  AND [${testingStatusField}] IN ('Test Failure - Dev','Test Failure - QA','Test Failure - UAT')
+                  AND NOT (${removedOrCompleted})
+                  ORDER BY [System.ChangedDate] DESC`, 'Defect leakage (QA Test Case)');
+        leakageItems = await getItems(base, leakWiql.workItems.map(w => w.id), leakageFieldList);
+      } else {
+        leakageStatusNote = 'Couldn\'t find a "Testing Status" field on QA Test Case — check the exact field label and let me know if it\'s named differently.';
+      }
+    } else {
+      leakageStatusNote = 'This project has no "QA Test Case" work item type, so defect leakage can\'t be calculated.';
+    }
+
+    setStatus('Finding sprints...');
+    const currentIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
+    const currentIter = currentIterData.value[0] || null;
+    const allIterData = await adoGet(`${teamBase}/_apis/work/teamsettings/iterations?api-version=7.1`);
+    let previousIter = null;
+    if (currentIter) {
+      const currentStart = currentIter.attributes && currentIter.attributes.startDate;
+      const past = allIterData.value.filter(it =>
+        it.attributes && it.attributes.finishDate && currentStart && it.attributes.finishDate < currentStart
+      );
+      if (past.length) previousIter = past.sort((a, b) => a.attributes.finishDate.localeCompare(b.attributes.finishDate)).pop();
+    }
+
+    // Development now runs its own separate sprint calendar (its work moved
+    // out of this team's area/iteration scope), so its current sprint is
+    // looked up against its own team rather than assumed to line up with
+    // this page's main "team" setting. Failure here (team not yet
+    // configured, or its name doesn't match an ADO team) is non-fatal —
+    // the Development burndown card just shows a helpful note instead.
+    let devCurrentIter = null;
+    let devLookupError = '';
+    if (devTeamName) {
+      try {
+        const devTeamBase = `${base}/${project}/${encodeURIComponent(devTeamName)}`;
+        const devCurData = await adoGet(`${devTeamBase}/_apis/work/teamsettings/iterations?api-version=7.1&$timeframe=current`);
+        devCurrentIter = devCurData.value[0] || null;
+        if (!devCurrentIter) devLookupError = `No current sprint found for the "${devTeamName}" team.`;
+      } catch (e) {
+        devLookupError = `Couldn't look up the "${devTeamName}" team — check the name matches exactly (Project Settings → Teams).`;
+      }
+    } else {
+      devLookupError = 'Set the Development team name in Dev Planner or Resource Review to enable this card.';
+    }
+
+    const fields = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State',
+                    'System.AssignedTo', 'System.ChangedDate', 'System.CreatedDate', 'System.IterationPath',
+                    'System.AreaPath', 'System.Tags'];
+
+    const now = new Date();
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    const weekStartClause = daysSinceMonday === 0 ? '@Today' : `@Today - ${daysSinceMonday}`;
+    const weekStartDateKey = new Date(now.getTime() - daysSinceMonday * 86400000).toISOString().slice(0, 10);
+
+    setStatus('Fetching completed items...');
+    const completedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= @Today - 1
+              AND ${completedClause}
+              ORDER BY [System.ChangedDate] DESC`, 'Completed in last 24 hours');
+    const completedItems = await getItems(base, completedWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Checking for reopened items...');
+    const reopenedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= ${weekStartClause}
+              AND ${everCompletedClause}
+              AND NOT ${removedOrCompleted}
+              ORDER BY [System.ChangedDate] DESC`, 'Reopened items this week');
+    const reopenedItems = await getItems(base, reopenedWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Checking for blocked items...');
+    const blockedWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.Tags] CONTAINS 'Blocked'
+              AND NOT ${removedOrCompleted}`, 'Blocked items');
+    const blockedItems = await getItems(base, blockedWiql.workItems.map(w => w.id), fields);
+
+    let sprintItems = [];
+    if (currentIter) {
+      setStatus('Fetching current sprint items...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${currentIter.path}'`, 'Current sprint items');
+      sprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    let devSprintItems = [];
+    if (devCurrentIter) {
+      setStatus('Fetching Development sprint items...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${devCurrentIter.path.replace(/'/g, "''")}'`, 'Development current sprint items');
+      devSprintItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    let carryoverItems = [];
+    if (previousIter) {
+      setStatus('Fetching previous sprint carry-over...');
+      const ids = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+                WHERE [System.TeamProject] = '${project}'
+                AND [System.IterationPath] = '${previousIter.path}'
+                AND NOT ${removedOrCompleted}`, 'Previous sprint carry-over');
+      carryoverItems = await getItems(base, ids.workItems.map(w => w.id), fields);
+    }
+
+    setStatus('Fetching completion history (4 weeks)...');
+    // [System.ChangedDate] >= @Today - 27 here only builds a *candidate* list —
+    // it's bumped by any field edit, not just the completion transition, so an
+    // item completed months ago that just got a comment or tag change recently
+    // would otherwise show up as "completed" in this window. Below, each
+    // candidate's actual completion date is looked up from its revision
+    // history so the 4-week trend and "Completed this week" count reflect
+    // when items were really finished, not when they were last touched.
+    const trend4WeekWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= @Today - 27
+              AND ${completedClause}
+              ORDER BY [System.ChangedDate] DESC`, 'Completion history (4 weeks)');
+    const fourWeekCandidates = await getItems(base, trend4WeekWiql.workItems.map(w => w.id), fields);
+
+    setStatus('Verifying actual completion dates...');
+    const actualCompletionDates = await mapWithConcurrency(fourWeekCandidates, 8,
+      it => findActualCompletionDate(it, base, typeStateMap));
+    fourWeekCandidates.forEach((it, i) => {
+      // Fall back to ChangedDate only if history lookup found nothing (e.g.
+      // item was created directly into a completed state) so it isn't
+      // silently dropped from the trend.
+      const actual = actualCompletionDates[i] || field(it, 'System.ChangedDate');
+      it.fields['_ActualCompletedDate'] = actual;
+    });
+    // Re-scope to the actual 4-week window now that we know real completion
+    // dates (a candidate whose ChangedDate was recent but whose real
+    // completion was older than 27 days gets dropped here).
+    const fourWeekStartDateKey = new Date(now.getTime() - (27 * 86400000)).toISOString().slice(0, 10);
+    const fourWeekItems = fourWeekCandidates.filter(it =>
+      (field(it, '_ActualCompletedDate') || '').slice(0, 10) >= fourWeekStartDateKey);
+    const weeklyItems = fourWeekItems.filter(it => (field(it, '_ActualCompletedDate') || '').slice(0, 10) >= weekStartDateKey);
+
+    setStatus('Searching assigned resources...');
+    const workloadWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+              AND [System.AssignedTo] <> '' AND NOT ${removedOrCompleted}`, 'Workload by developer');
+    const workloadItems = await getItems(base, workloadWiql.workItems.map(w => w.id), fields);
+
+    // ---- recent comments, project-wide (not limited to current sprint or one
+    // team) - reuses workloadItems since that's already every open, assigned,
+    // non-terminal item across the project. Explicitly double-checks terminal
+    // state too, since comments on Done/Closed/Removed items aren't relevant.
+    // One API call per item (no batch-across-items endpoint exists), so capped
+    // to keep load times reasonable.
+    let commentRows = [];
+    let commentCheckFailures = 0;
+    const COMMENT_CHECK_CAP = 150;
+    if (shown('comments')) {
+      const candidates = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).slice(0, COMMENT_CHECK_CAP);
+      let checked = 0;
+      for (const it of candidates) {
+        checked++;
+        setStatus(`Checking comments (${checked}/${candidates.length})...`);
+        try {
+          // Note: this endpoint is still "preview" even under the 7.1 API family -
+          // plain api-version=7.1 is rejected, it must be 7.1-preview.4.
+          const cData = await adoGet(`${base}/${encodeURIComponent(project)}/_apis/wit/workItems/${it.id}/comments?api-version=7.1-preview.4`);
+          const comments = (cData.comments || []).filter(c =>
+            !c.isDeleted && !/^copied with all attachments and links from #/i.test((c.text || '').trim())
+          );
+          if (!comments.length) continue;
+          comments.sort((a, b) => new Date(a.createdDate) - new Date(b.createdDate));
+          const last = comments[comments.length - 1];
+          const lastAuthor = (last.createdBy && last.createdBy.displayName) || 'Unknown';
+          const assignedTo = field(it, 'System.AssignedTo', 'Unassigned');
+          const unanswered = lastAuthor.toLowerCase() !== assignedTo.toLowerCase();
+          commentRows.push({ item: it, text: last.text || '', author: lastAuthor, date: last.createdDate, unanswered, assignedTo });
+        } catch (e) {
+          commentCheckFailures++;
+        }
+      }
+    }
+
+    setStatus('Fetching area path breakdown...');
+    const areaWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+              AND NOT ${removedOrCompleted}`, 'Open items by area path');
+    const areaAllItems = await getItems(base, areaWiql.workItems.map(w => w.id), fields);
+
+    async function fetchOpenBacklog(workItemType) {
+      const states = typeStateMap[workItemType] || {};
+      const terminalNames = [...LITERAL_COMPLETED_STATES, ...LITERAL_REMOVED_STATES].map(x => x.toLowerCase());
+      const openStates = Object.keys(states).filter(s =>
+        states[s] !== 'Completed' && states[s] !== 'Removed' && !terminalNames.includes(s.toLowerCase())
+      );
+      if (!openStates.length) return [];
+      const stateList = openStates.map(s => `'${s}'`).join(',');
+      const result = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${project}'
+                AND [System.WorkItemType] = '${workItemType}' AND [System.State] IN (${stateList})`, `${workItemType} backlog`);
+      return getItems(base, result.workItems.map(w => w.id), fields);
+    }
+
+    setStatus('Fetching bug backlog...');
+    const bugItems = await fetchOpenBacklog('Bug');
+
+    setStatus('Fetching outstanding issues...');
+    const issueItems = await fetchOpenBacklog('Issue');
+
+    setStatus('Fetching 14-day completion trend...');
+    const trendWiql = await wiql(projectBase, `SELECT [System.Id] FROM WorkItems
+              WHERE [System.TeamProject] = '${project}'
+              AND [System.ChangedDate] >= @Today - 13
+              AND ${completedClause}`, 'Completion trend (14 days)');
+    const trendItems = await getItems(base, trendWiql.workItems.map(w => w.id), fields);
+
+    // ---- sprint burndown ----
+    let burndownHtml = 'No active sprint with start/finish dates found.';
+    let burndownStatusLabel = 'unknown';
+    let sprintRemainingToday = null;
+    let sprintTotalToday = null;
+    if (currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
+      const start = new Date(currentIter.attributes.startDate);
+      const finish = new Date(currentIter.attributes.finishDate);
+      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
+      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
+      const doneCount = sprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
+      const remainingCount = sprintItems.length - doneCount;
+      sprintRemainingToday = remainingCount;
+      sprintTotalToday = sprintItems.length;
+      const expectedRemainingFrac = daysRemaining / totalDays;
+      const actualRemainingFrac = sprintItems.length ? remainingCount / sprintItems.length : 0;
+      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
+      burndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
+      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
+      burndownHtml = `${currentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${sprintItems.length} item(s) still open —
+        <span class="badge ${badgeClass}">${burndownStatusLabel}</span>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
+    }
+
+    // ---- Development sprint burndown (own separate calendar) ----
+    let devBurndownHtml = devLookupError || 'No active sprint with start/finish dates found.';
+    let devBurndownStatusLabel = 'unknown';
+    let devSprintRemainingToday = null;
+    let devSprintTotalToday = null;
+    if (devCurrentIter && devCurrentIter.attributes && devCurrentIter.attributes.startDate && devCurrentIter.attributes.finishDate) {
+      const start = new Date(devCurrentIter.attributes.startDate);
+      const finish = new Date(devCurrentIter.attributes.finishDate);
+      const totalDays = Math.max(1, Math.round((finish - start) / 86400000));
+      const daysRemaining = Math.max(0, Math.ceil((finish - now) / 86400000));
+      const doneCount = devSprintItems.filter(it => isCompletedState(it, typeStateMap)).length;
+      const remainingCount = devSprintItems.length - doneCount;
+      devSprintRemainingToday = remainingCount;
+      devSprintTotalToday = devSprintItems.length;
+      const expectedRemainingFrac = daysRemaining / totalDays;
+      const actualRemainingFrac = devSprintItems.length ? remainingCount / devSprintItems.length : 0;
+      const atRisk = daysRemaining > 0 && actualRemainingFrac > expectedRemainingFrac + 0.15;
+      devBurndownStatusLabel = daysRemaining === 0 ? 'Sprint ending today' : (atRisk ? 'At risk' : 'On track');
+      const badgeClass = daysRemaining === 0 ? 'badge-warn' : (atRisk ? 'badge-bad' : 'badge-good');
+      devBurndownHtml = `${devCurrentIter.name}: <strong>${daysRemaining}</strong> day(s) remaining, <strong>${remainingCount}</strong> of ${devSprintItems.length} item(s) still open —
+        <span class="badge ${badgeClass}">${devBurndownStatusLabel}</span>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">Rough estimate based on days elapsed vs items remaining — not a substitute for a real burndown chart.</div>`;
+    }
+
+    // ---- day-over-day trend ----
+    let statsHistory = {};
+    const rawHistory = storage.get('ado-stats-history');
+    if (rawHistory) { try { statsHistory = JSON.parse(rawHistory); } catch (e) {} }
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const priorKeys = Object.keys(statsHistory).filter(k => k !== todayKey).sort();
+    const prior = priorKeys.length ? statsHistory[priorKeys[priorKeys.length - 1]] : null;
+    const currentStats = {
+      completed: completedItems.length, sprint: sprintItems.length, carryover: carryoverItems.length,
+      bugs: bugItems.length, issues: issueItems.length,
+      sprintPath: currentIter ? currentIter.path : null,
+      sprintRemaining: sprintRemainingToday, sprintTotal: sprintTotalToday,
+      devSprintPath: devCurrentIter ? devCurrentIter.path : null,
+      devSprintRemaining: devSprintRemainingToday, devSprintTotal: devSprintTotalToday,
+    };
+    statsHistory[todayKey] = currentStats;
+    const allKeys = Object.keys(statsHistory).sort();
+    if (allKeys.length > 30) allKeys.slice(0, allKeys.length - 30).forEach(k => delete statsHistory[k]);
+    storage.set('ado-stats-history', JSON.stringify(statsHistory));
+    const deltas = prior ? {
+      completed: currentStats.completed - prior.completed, sprint: currentStats.sprint - prior.sprint,
+      carryover: currentStats.carryover - prior.carryover, bugs: currentStats.bugs - prior.bugs,
+      issues: currentStats.issues - prior.issues,
+    } : null;
+
+    // ---- render ----
+    const statDefs = [
+      { key: 'completed', color: 'var(--good)', value: completedItems.length, label: 'Completed (24h)', delta: fmtDelta(deltas ? deltas.completed : null, true) },
+      { key: 'sprint', color: 'var(--accent)', value: sprintItems.length, label: 'In current sprint', delta: fmtDelta(deltas ? deltas.sprint : null, null) },
+      { key: 'carryover', color: 'var(--warn)', value: carryoverItems.length, label: 'Carried over', delta: fmtDelta(deltas ? deltas.carryover : null, false) },
+      { key: 'bugs', color: 'var(--warn)', value: bugItems.length, label: 'Open bugs', delta: fmtDelta(deltas ? deltas.bugs : null, false) },
+      { key: 'issues', color: 'var(--warn)', value: issueItems.length, label: 'Open issues', delta: fmtDelta(deltas ? deltas.issues : null, false) },
+      { key: 'blocked', color: 'var(--bad)', value: blockedItems.length, label: 'Blocked items', delta: '' },
+      { key: 'reopened', color: 'var(--bad)', value: reopenedItems.length, label: 'Reopened items', delta: '' },
+      { key: 'weekly', color: 'var(--good)', value: weeklyItems.length, label: 'Completed this week', delta: '' },
+      { key: 'comments', color: 'var(--bad)', value: commentRows.filter(r => r.unanswered).length, label: 'Unanswered comments', delta: '' },
+    ];
+    const visibleStats = statDefs.filter(s => shown(s.key));
+    document.getElementById('stats').style.display = visibleStats.length ? 'grid' : 'none';
+    document.getElementById('stats').innerHTML = visibleStats
+      .map(s => `<div class="stat"><div class="num" style="color:${s.color}">${s.value}</div><div class="label">${s.label}</div>${s.delta}</div>`)
+      .join('');
+
+    document.getElementById('sec-burndown').style.display = shown('burndown') ? 'block' : 'none';
+    document.getElementById('meta-burndown').innerHTML = burndownHtml;
+    if (shown('burndown') && currentIter && currentIter.attributes && currentIter.attributes.startDate && currentIter.attributes.finishDate) {
+      const bStart = new Date(currentIter.attributes.startDate);
+      const bFinish = new Date(currentIter.attributes.finishDate);
+      const bTotalDays = Math.max(1, Math.round((bFinish - bStart) / 86400000));
+      const idealLabels = [];
+      const idealData = [];
+      for (let d = 0; d <= bTotalDays; d++) {
+        const day = new Date(bStart.getTime() + d * 86400000);
+        idealLabels.push(day.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+        idealData.push(Math.max(0, sprintTotalToday - (sprintTotalToday / bTotalDays) * d));
+      }
+      const actualData = idealLabels.map((_, i) => {
+        const dayKey = new Date(bStart.getTime() + i * 86400000).toISOString().slice(0, 10);
+        const point = statsHistory[dayKey];
+        return (point && point.sprintPath === currentIter.path) ? point.sprintRemaining : null;
+      });
+      renderLineChart('chart-burndown', idealLabels, [
+        { label: 'Ideal', data: idealData, borderColor: '#9aa1ac', borderDash: [6, 4], pointRadius: 0 },
+        { label: 'Actual', data: actualData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.1)', spanGaps: true },
+      ]);
+    }
+
+    document.getElementById('sec-dev-burndown').style.display = shown('devBurndown') ? 'block' : 'none';
+    document.getElementById('meta-dev-burndown').innerHTML = devBurndownHtml;
+    if (shown('devBurndown')) {
+      if (devCurrentIter && devCurrentIter.attributes && devCurrentIter.attributes.startDate && devCurrentIter.attributes.finishDate) {
+        document.getElementById('dev-burndown-footnote').style.display = 'block';
+        const bStart = new Date(devCurrentIter.attributes.startDate);
+        const bFinish = new Date(devCurrentIter.attributes.finishDate);
+        const bTotalDays = Math.max(1, Math.round((bFinish - bStart) / 86400000));
+        const idealLabels = [];
+        const idealData = [];
+        for (let d = 0; d <= bTotalDays; d++) {
+          const day = new Date(bStart.getTime() + d * 86400000);
+          idealLabels.push(day.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+          idealData.push(Math.max(0, devSprintTotalToday - (devSprintTotalToday / bTotalDays) * d));
+        }
+        const actualData = idealLabels.map((_, i) => {
+          const dayKey = new Date(bStart.getTime() + i * 86400000).toISOString().slice(0, 10);
+          const point = statsHistory[dayKey];
+          return (point && point.devSprintPath === devCurrentIter.path) ? point.devSprintRemaining : null;
+        });
+        renderLineChart('chart-dev-burndown', idealLabels, [
+          { label: 'Ideal', data: idealData, borderColor: '#9aa1ac', borderDash: [6, 4], pointRadius: 0 },
+          { label: 'Actual', data: actualData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.1)', spanGaps: true },
+        ]);
+      } else {
+        document.getElementById('dev-burndown-footnote').style.display = 'none';
+        if (charts['chart-dev-burndown']) { charts['chart-dev-burndown'].destroy(); delete charts['chart-dev-burndown']; }
+      }
+    }
+
+    document.getElementById('sec-completion-trend').style.display = shown('completionTrend') ? 'block' : 'none';
+    if (shown('completionTrend')) {
+      const dayLabels = [];
+      const dayCounts = {};
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const key = d.toISOString().slice(0, 10);
+        dayLabels.push(d.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }));
+        dayCounts[key] = 0;
+      }
+      trendItems.forEach(it => {
+        const key = (field(it, 'System.ChangedDate') || '').slice(0, 10);
+        if (key in dayCounts) dayCounts[key]++;
+      });
+      renderLineChart('chart-completion-trend', dayLabels, [
+        { label: 'Completed', data: Object.values(dayCounts), borderColor: '#2e7d32', backgroundColor: 'rgba(46,125,50,0.15)', fill: true, tension: 0.3 },
+      ]);
+    }
+
+    document.getElementById('sec-completed').style.display = shown('completed') ? 'block' : 'none';
+    document.getElementById('meta-completed').textContent = `${completedItems.length} item(s)`;
+    document.getElementById('rows-completed').innerHTML = rowsHtml(completedItems);
+
+    document.getElementById('sec-reopened').style.display = shown('reopened') ? 'block' : 'none';
+    document.getElementById('meta-reopened').textContent = `${reopenedItems.length} item(s) reopened this week, previously in a Done/Closed state`;
+    document.getElementById('rows-reopened').innerHTML = rowsHtml(reopenedItems);
+
+    document.getElementById('sec-blocked').style.display = shown('blocked') ? 'block' : 'none';
+    document.getElementById('meta-blocked').textContent = `${blockedItems.length} item(s) tagged "Blocked"`;
+    document.getElementById('rows-blocked').innerHTML = rowsHtml(blockedItems);
+
+    document.getElementById('sec-sprint').style.display = shown('sprint') ? 'block' : 'none';
+    document.getElementById('title-sprint').textContent = `Current sprint — ${currentIter ? currentIter.name : 'none found'}`;
+    document.getElementById('meta-sprint').textContent = `${sprintItems.length} item(s)`;
+    document.getElementById('rows-sprint').innerHTML = rowsHtml(sprintItems);
+
+    document.getElementById('sec-comments').style.display = shown('comments') ? 'block' : 'none';
+    if (shown('comments')) {
+      const unansweredCount = commentRows.filter(r => r.unanswered).length;
+      const eligibleCount = workloadItems.filter(it => !isTerminalState(it, typeStateMap)).length;
+      const candidateCount = Math.min(eligibleCount, COMMENT_CHECK_CAP);
+      const cappedNote = eligibleCount > COMMENT_CHECK_CAP
+        ? ` Checked the first ${COMMENT_CHECK_CAP} of ${eligibleCount} eligible open items.`
+        : '';
+      const failureNote = commentCheckFailures > 0
+        ? ` ⚠ ${commentCheckFailures} of ${candidateCount} comment lookups failed` +
+          (commentCheckFailures === candidateCount ? ' (all of them — likely an API or permissions issue, not "no comments").' : '.')
+        : '';
+      document.getElementById('meta-comments').textContent =
+        `${commentRows.length} item(s) with comments, ${unansweredCount} awaiting a response from the assignee.${cappedNote}${failureNote}`;
+      document.getElementById('rows-comments').innerHTML = commentRows.length
+        ? commentRows
+            .sort((a, b) => (b.unanswered - a.unanswered) || (new Date(b.date) - new Date(a.date)))
+            .map(r => {
+              const plainText = (r.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+              const escText = plainText.replace(/</g, '&lt;').slice(0, 140);
+              const age = daysAgo(r.date);
+              const idLink = workItemBaseUrl
+                ? `<a href="${workItemBaseUrl}${r.item.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${r.item.id}</a>`
+                : `#${r.item.id}`;
+              const statusBadge = r.unanswered
+                ? `<span class="badge badge-bad">Unanswered</span>`
+                : `<span class="badge badge-good">Responded</span>`;
+              const needsResponse = r.unanswered ? r.assignedTo : '—';
+              return `<tr><td>${idLink}</td><td>${field(r.item, 'System.Title')}</td><td>${escText}${plainText.length > 140 ? '…' : ''}</td><td>${r.author}</td><td>${age}</td><td>${statusBadge}</td><td>${needsResponse}</td></tr>`;
+            }).join('')
+        : '<tr><td colspan="7" class="empty">No comments found on open items</td></tr>';
+
+      const areaSummary = {};
+      commentRows.filter(r => r.unanswered).forEach(r => {
+        const area = field(r.item, 'System.AreaPath', '(no area path)');
+        if (!areaSummary[area]) areaSummary[area] = { count: 0, people: new Set() };
+        areaSummary[area].count++;
+        if (r.assignedTo) areaSummary[area].people.add(r.assignedTo);
+      });
+      const areaRows = Object.entries(areaSummary).sort((a, b) => b[1].count - a[1].count);
+      document.getElementById('rows-comments-area-summary').innerHTML = areaRows.length
+        ? areaRows.map(([area, d]) =>
+            `<tr><td>${area}</td><td>${d.count}</td><td>${[...d.people].join(', ') || '—'}</td></tr>`
+          ).join('')
+        : '<tr><td colspan="3" class="empty">No unanswered comments right now</td></tr>';
+    }
+
+    document.getElementById('sec-carryover').style.display = shown('carryover') ? 'block' : 'none';
+    document.getElementById('title-carryover').textContent = `Carried over — ${previousIter ? previousIter.name : 'no previous sprint found'}`;
+    document.getElementById('meta-carryover').textContent = `${carryoverItems.length} item(s) not yet completed`;
+    document.getElementById('rows-carryover').innerHTML = rowsHtml(carryoverItems);
+
+    document.getElementById('sec-weekly').style.display = shown('weekly') ? 'block' : 'none';
+    document.getElementById('meta-weekly').textContent = `${weeklyItems.length} item(s) completed since Monday`;
+    document.getElementById('rows-weekly').innerHTML = rowsHtml(weeklyItems);
+    if (shown('weekly')) {
+      const weeklyByArea = {};
+      weeklyItems.forEach(it => {
+        const a = field(it, 'System.AreaPath', '(no area path)');
+        weeklyByArea[a] = (weeklyByArea[a] || 0) + 1;
+      });
+      const sortedWeeklyAreas = Object.entries(weeklyByArea).sort((a, b) => b[1] - a[1]);
+      document.getElementById('rows-weekly-area').innerHTML = sortedWeeklyAreas
+        .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
+        .join('') || '<tr><td colspan="2" class="empty">Nothing completed this week yet</td></tr>';
+      renderBarChart('chart-weekly-area', sortedWeeklyAreas.map(a => a[0]), sortedWeeklyAreas.map(a => a[1]), '#2e7d32');
+    }
+
+    const excluded = getExcludedAssignees();
+    const workload = {};
+    const workloadItemsByDev = {};
+    const excludedItems = [];
+    workloadItems.forEach(it => {
+      const a = field(it, 'System.AssignedTo', 'Unassigned');
+      if (excluded.includes(a.toLowerCase())) { excludedItems.push(it); return; }
+      workload[a] = (workload[a] || 0) + 1;
+      (workloadItemsByDev[a] = workloadItemsByDev[a] || []).push(it);
+    });
+    document.getElementById('sec-workload').style.display = shown('workload') ? 'block' : 'none';
+    const excludedNote = excluded.length ? ` (excluding ${excluded.length} name(s) you've filtered out)` : '';
+    document.getElementById('meta-workload').textContent = `${Object.values(workload).reduce((a,b)=>a+b,0)} open item(s) across the project, grouped by assignee${excludedNote}`;
+    document.getElementById('rows-workload').innerHTML = Object.entries(workload)
+      .sort((a, b) => b[1] - a[1])
+      .map(([dev, count], i) => `
+        <tr style="cursor:pointer" onclick="document.getElementById('workload-detail-${i}').style.display = document.getElementById('workload-detail-${i}').style.display === 'none' ? 'table-row' : 'none'">
+          <td>${dev} <span style="color:var(--muted);font-size:11px">(click to audit)</span></td><td>${count}</td>
+        </tr>
+        <tr id="workload-detail-${i}" style="display:none">
+          <td colspan="2" style="background:#f5f7fa">
+            ${workloadItemsByDev[dev].map(it => {
+              const state = field(it, 'System.State');
+              const wit = field(it, 'System.WorkItemType');
+              const idLink = workItemBaseUrl ? `<a href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">#${it.id}</a>` : `#${it.id}`;
+              return `<div style="padding:3px 0;font-size:12px">${idLink} ${field(it, 'System.Title')} — <span class="badge">${state}</span> (${wit})</div>`;
+            }).join('')}
+          </td>
+        </tr>`)
+      .join('') || '<tr><td colspan="2" class="empty">No assigned open items found</td></tr>';
+    if (shown('workload')) {
+      const sortedWorkload = Object.entries(workload).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      renderBarChart('chart-workload', sortedWorkload.map(w => w[0]), sortedWorkload.map(w => w[1]), '#3f51b5');
+    }
+
+    document.getElementById('sec-excluded-items').style.display = (shown('workload') && excluded.length) ? 'block' : 'none';
+    if (excluded.length) {
+      document.getElementById('meta-excluded-items').textContent = excludedItems.length
+        ? `${excludedItems.length} open item(s) still assigned to a name on your exclude list — a cleanup worklist, not hidden data.`
+        : `No open items found for the excluded name(s) — nothing to reassign.`;
+      document.getElementById('rows-excluded-items').innerHTML = rowsHtml(excludedItems);
+    }
+
+    const areaBreakdown = {};
+    areaAllItems.forEach(it => {
+      const a = field(it, 'System.AreaPath', '(no area path)');
+      areaBreakdown[a] = (areaBreakdown[a] || 0) + 1;
+    });
+    document.getElementById('sec-area').style.display = shown('area') ? 'block' : 'none';
+    document.getElementById('meta-area').textContent = `${areaAllItems.length} open item(s) across the whole project`;
+    document.getElementById('rows-area').innerHTML = Object.entries(areaBreakdown)
+      .sort((a, b) => b[1] - a[1])
+      .map(([area, count]) => `<tr><td>${area}</td><td>${count}</td></tr>`)
+      .join('') || '<tr><td colspan="2" class="empty">No open items found</td></tr>';
+    if (shown('area')) {
+      const sortedAreas = Object.entries(areaBreakdown).sort((a, b) => b[1] - a[1]);
+      renderPieChart('chart-area', sortedAreas.map(a => a[0]), sortedAreas.map(a => a[1]));
+    }
+
+    document.getElementById('sec-bugs').style.display = shown('bugs') ? 'block' : 'none';
+    document.getElementById('meta-bugs').textContent = `${bugItems.length} unresolved bug(s)`;
+    document.getElementById('rows-bugs').innerHTML = rowsHtml(bugItems);
+
+    document.getElementById('sec-issues').style.display = shown('issues') ? 'block' : 'none';
+    document.getElementById('meta-issues').textContent = `${issueItems.length} unresolved issue(s)`;
+    document.getElementById('rows-issues').innerHTML = rowsHtml(issueItems);
+
+    const backlogAgeSeen = new Map();
+    [...bugItems, ...issueItems, ...carryoverItems].forEach(it => backlogAgeSeen.set(it.id, it));
+    const backlogAgeBuckets = { '0-2 days': 0, '3-5 days': 0, '6-10 days': 0, '10+ days': 0 };
+    backlogAgeSeen.forEach(it => {
+      const age = daysAgo(field(it, 'System.ChangedDate')) || 0;
+      if (age <= 2) backlogAgeBuckets['0-2 days']++;
+      else if (age <= 5) backlogAgeBuckets['3-5 days']++;
+      else if (age <= 10) backlogAgeBuckets['6-10 days']++;
+      else backlogAgeBuckets['10+ days']++;
+    });
+    document.getElementById('sec-backlog-age').style.display = shown('backlogAge') ? 'block' : 'none';
+    if (shown('backlogAge')) {
+      renderBarChart('chart-backlog-age', Object.keys(backlogAgeBuckets), Object.values(backlogAgeBuckets), '#b45309');
+    }
+
+    const sectionPrefs = {};
+    SECTION_KEYS.forEach(k => sectionPrefs[k] = shown(k));
+
+    document.getElementById('sec-team-performance').style.display = shown('teamPerformance') ? 'block' : 'none';
+    if (shown('teamPerformance')) {
+      const perfAreaOptions = [...new Set([...areaAllItems, ...fourWeekItems].map(it => field(it, 'System.AreaPath', '')).filter(Boolean))];
+      populatePerfAreaOptions(perfAreaOptions);
+      perfData = { fourWeekItems, weeklyItems, base, typeStateMap, leakageItems, leakageFieldsFound, leakageStatusNote };
+      renderTeamPerformance();
+    }
+
+    document.getElementById('sec-insights').style.display = shown('insights') ? 'block' : 'none';
+    if (shown('insights')) {
+      renderInsights({
+        blockedItems, carryoverItems, workload, areaBreakdown, backlogAgeBuckets,
+        bugItems, issueItems, burndownStatusLabel, devBurndownStatusLabel, leakageItems, leakageFieldsFound, leakageStatusNote,
+        commentRows,
+      });
+    }
+
+    lastReport = {
+      recipient, completedItems, sprintItems, carryoverItems, workload, bugItems, issueItems,
+      reopenedItems, blockedItems, weeklyItems, burndownStatusLabel, sectionPrefs,
+      currentIterName: currentIter ? currentIter.name : 'none found',
+      previousIterName: previousIter ? previousIter.name : 'no previous sprint found',
+      devSprintItems, devBurndownStatusLabel,
+      devCurrentIterName: devCurrentIter ? devCurrentIter.name : (devLookupError || 'none found'),
+      areaBreakdown, backlogAgeBuckets, leakageItems, leakageFieldsFound, leakageStatusNote,
+      currentSprintTotal: sprintItems.length,
+    };
+    sendBtn.disabled = false;
+
+    setStatus('Done.');
+  } catch (err) {
+    if (err.message === 'CORS_OR_NETWORK') {
+      showError(`
+        <strong>Blocked before it could reach Azure DevOps.</strong><br>
+        This is almost always a CORS block — Azure DevOps's REST API doesn't send the
+        headers browsers need to allow direct JavaScript calls from a page like this one,
+        regardless of your PAT being correct. It's a server-side restriction on Microsoft's
+        end, not something fixable from this page.<br><br>
+        Open your browser's DevTools (F12) → Console/Network tab and re-click "Load Dashboard" —
+        if you see the word "CORS" in a red error there, that confirms it.
+      `);
+    } else if (err.message === 'HTTP_401' || err.message === 'HTTP_403') {
+      showError('Authentication failed — double check the PAT has "Work Items (Read)" scope and hasn\'t expired.');
+    } else if (err.message === 'HTTP_404') {
+      showError('Got a 404 — double check the organization, project, and team names are spelled exactly as they appear in Azure DevOps (team name is usually "&lt;Project&gt; Team").');
+    } else if (err.message && err.message.startsWith('HTTP_')) {
+      const step = err.wiqlLabel ? `<strong>Step:</strong> ${err.wiqlLabel}<br>` : '';
+      const detail = err.detail ? `<strong>Azure DevOps said:</strong> ${err.detail}<br>` : '';
+      const query = err.wiqlQuery ? `<pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--border);padding:8px;margin-top:8px;font-size:11px;border-radius:2px">${err.wiqlQuery.replace(/</g,'&lt;')}</pre>` : '';
+      showError(`<strong>${err.message.replace('HTTP_','HTTP ')} — something in this request was rejected.</strong><br>${step}${detail}${query}`);
+    } else {
+      showError('Something went wrong: ' + err.message);
+    }
+    setStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function sendReport() {
+  if (!lastReport) return;
+  const r = lastReport;
+  const sp = r.sectionPrefs || {};
+  const today = new Date().toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  let body = `ADO MORNING REPORT - ${today}\n\nSUMMARY\n`;
+  if (sp.completed) body += `Completed (24h): ${r.completedItems.length}\n`;
+  if (sp.sprint) body += `Current sprint (${r.currentIterName}): ${r.sprintItems.length} item(s) - ${r.burndownStatusLabel}\n`;
+  if (sp.devBurndown && r.devSprintItems) body += `Development sprint (${r.devCurrentIterName}): ${r.devSprintItems.length} item(s) - ${r.devBurndownStatusLabel}\n`;
+  if (sp.carryover) body += `Carried over from previous sprint (${r.previousIterName}): ${r.carryoverItems.length} item(s)\n`;
+  if (sp.weekly) body += `Completed this week: ${r.weeklyItems.length}\n`;
+  if (sp.bugs) body += `Open bugs: ${r.bugItems.length}\n`;
+  if (sp.issues) body += `Open issues: ${r.issueItems.length}\n`;
+  if (sp.blocked) body += `Blocked items: ${r.blockedItems.length}\n`;
+  if (sp.reopened) body += `Reopened items: ${r.reopenedItems.length}\n`;
+
+  if (sp.completed) body += `\nCOMPLETED IN LAST 24 HOURS\n${summarizeItems(r.completedItems, 15)}`;
+  if (sp.reopened) body += `\nREOPENED THIS WEEK (was Done, now not)\n${summarizeItems(r.reopenedItems, 15)}`;
+  if (sp.blocked) body += `\nBLOCKED ITEMS\n${summarizeItems(r.blockedItems, 15)}`;
+  if (sp.carryover) body += `\nCARRIED OVER FROM PREVIOUS SPRINT\n${summarizeItems(r.carryoverItems, 15)}`;
+  if (sp.workload) {
+    const workloadLines = Object.entries(r.workload).sort((a, b) => b[1] - a[1])
+      .map(([dev, count]) => `  ${dev}: ${count}`).join('\n') || '  (none)';
+    body += `\nWORKLOAD BY DEVELOPER\n${workloadLines}\n`;
+  }
+  if (sp.bugs) body += `\nOPEN BUG BACKLOG\n${summarizeItems(r.bugItems, 15)}`;
+  if (sp.issues) body += `\nOPEN ISSUES\n${summarizeItems(r.issueItems, 15)}`;
+  body += `\nGenerated from the ADO Morning Dashboard.`;
+
+  const subject = `ADO Morning Report - ${new Date().toISOString().slice(0, 10)}`;
+  const to = r.recipient || '';
+  const mailto = `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  window.location.href = mailto;
+}
+</script>
+</div>
+</body>
+</html>
