@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Item Search</title>
+<style>
+  :root { --bg:#eceff3; --card:#fff; --text:#1d2433; --muted:#667085; --border:#d9dee7; --accent:#3f51b5; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 20px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=password], input[type=search] { font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 4px; background: #fafbfc; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: #fff; }
+  #q { flex: 1; min-width: 260px; font-size: 16px; }
+  button { font: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; font-size: 13px; background: var(--accent); color: #fff; border: 0; border-radius: 3px; padding: 11px 20px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .6; cursor: wait; }
+  label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 4px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+  .grid3 input { width: 100%; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  #status { font-size: 13px; color: var(--muted); }
+  #status.err { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .tbl { overflow-x: auto; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #eef0f6; font-size: 12px; }
+  .none { color: var(--muted); }
+  details summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Work Item Search</h1>
+  <div class="sub">Find any Azure DevOps work item by its ID or its TMT number, in any state. Runs in your browser.</div>
+
+  <div class="card">
+    <form id="f" class="row" autocomplete="off">
+      <input id="q" type="search" placeholder="Work item or TMT number, e.g. 12345 or TMT-0456 (several: separate with commas)" autofocus>
+      <button type="submit" id="go">Search</button>
+      <button type="button" class="ghost" id="clr">Clear</button>
+      <span id="status"></span>
+    </form>
+    <div class="hint">Numbers are checked as both a work item ID and a TMT number. A leading "WI" or "#" is ignored.</div>
+
+    <details id="conn" style="margin-top:14px">
+      <summary>Connection</summary>
+      <div class="grid3">
+        <div><label for="org">Organization</label><input id="org" type="text" value="SolvemCon"></div>
+        <div><label for="project">Project</label><input id="project" type="text" value="Solvem - SDLC"></div>
+        <div><label for="pat">Personal access token</label><input id="pat" type="password" placeholder="Needs Work Items (Read)"></div>
+      </div>
+      <div class="hint" id="connNote">Kept for this browser tab only and sent only to dev.azure.com.</div>
+    </details>
+  </div>
+
+  <div class="card" id="results" style="display:none"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TMT_NAMES = ['tmt number', 'tmt no', 'tmt id', 'tmt'];
+let tmtRef; // undefined = not looked up, null = none exists
+
+// Reuse the dashboard's sign-in if this page is hosted next to it (same site).
+(function hydrate() {
+  let cfg = null;
+  try { cfg = JSON.parse(sessionStorage.getItem('ado-session') || localStorage.getItem('ado-session') || 'null'); } catch (e) {}
+  try { if (!cfg) cfg = JSON.parse(sessionStorage.getItem('ws-conn') || 'null'); } catch (e) {}
+  if (cfg) {
+    if (cfg.org) $('org').value = cfg.org;
+    if (cfg.project) $('project').value = cfg.project;
+    if (cfg.pat) { $('pat').value = cfg.pat; $('connNote').textContent = 'Using your existing dashboard sign-in.'; }
+  }
+  if (!$('pat').value) $('conn').open = true;
+})();
+
+function setStatus(msg, isErr) { const s = $('status'); s.textContent = msg; s.className = isErr ? 'err' : ''; }
+async function api(url, body) {
+  let res;
+  try {
+    res = await fetch(url, { method: body ? 'POST' : 'GET',
+      headers: Object.assign({ 'Authorization': 'Basic ' + btoa(':' + $('pat').value.trim()) }, body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined });
+  } catch (e) { throw new Error('NETWORK'); }
+  if (!res.ok) { const e = new Error('HTTP_' + res.status); e.status = res.status; throw e; }
+  return res.json();
+}
+const fld = (it, n, d = '') => { const v = (it.fields || {})[n]; if (v == null || v === '') return d; return typeof v === 'object' ? (v.displayName || v.uniqueName || d) : String(v); };
+
+async function findTmtField(projectBase) {
+  if (tmtRef !== undefined) return tmtRef;
+  const types = (await api(`${projectBase}/_apis/wit/workitemtypes?api-version=7.1`)).value.filter(t => !t.isDisabled);
+  for (const t of types) {
+    try {
+      const fields = (await api(`${projectBase}/_apis/wit/workitemtypes/${encodeURIComponent(t.name)}/fields?api-version=7.1`)).value;
+      const hit = fields.find(f => TMT_NAMES.includes((f.name || '').toLowerCase()));
+      if (hit) { tmtRef = hit.referenceName; return tmtRef; }
+    } catch (e) { /* try next type */ }
+  }
+  tmtRef = null; return null;
+}
+
+async function run(e) {
+  e.preventDefault();
+  const raw = $('q').value.trim();
+  const org = $('org').value.trim(), project = $('project').value.trim(), pat = $('pat').value.trim();
+  if (!raw) { setStatus('Type a work item ID or TMT number.', true); return; }
+  if (!org || !project || !pat) { $('conn').open = true; setStatus('Add your organization, project and token first.', true); return; }
+  try { sessionStorage.setItem('ws-conn', JSON.stringify({ org, project, pat })); } catch (e2) {}
+  const base = `https://dev.azure.com/${encodeURIComponent(org)}`;
+  const projectBase = `${base}/${encodeURIComponent(project)}`;
+  const link = (id) => `${projectBase}/_workitems/edit/${id}`;
+  $('go').disabled = true; setStatus('Searching…');
+  try {
+    const tokens = [...new Set(raw.split(/[\s,;]+/).map(t => t.replace(/^(wi|#)[\s:#-]*/i, '').trim()).filter(Boolean))].slice(0, 20);
+    const tmt = await findTmtField(projectBase);
+    const cols = ['System.Id', 'System.Title', 'System.WorkItemType', 'System.State', 'System.AssignedTo', 'System.IterationPath', 'System.ChangedDate'];
+    if (tmt) cols.push(tmt);
+    const found = new Map();
+    const add = (it, how, tok) => { const x = found.get(it.id) || { it, how: new Set() }; x.how.add(`${how} “${tok}”`); found.set(it.id, x); };
+    for (const tok of tokens) {
+      if (/^\d+$/.test(tok)) {
+        try { add(await api(`${base}/_apis/wit/workitems/${tok}?fields=${cols.map(encodeURIComponent).join(',')}&api-version=7.1`), 'ID', tok); }
+        catch (err) { if (err.status !== 404) throw err; }
+      }
+      if (tmt) {
+        const q = async (cond) => ((await api(`${projectBase}/_apis/wit/wiql?api-version=7.1`, { query: `SELECT [System.Id] FROM WorkItems WHERE ${cond}` })).workItems || []).map(w => w.id).slice(0, 50);
+        let ids = [];
+        try { ids = await q(`[${tmt}] CONTAINS '${tok.replace(/'/g, "''")}'`); }
+        catch (err) { if (/^\d+$/.test(tok)) { try { ids = await q(`[${tmt}] = ${tok}`); } catch (e3) {} } else if (err.status !== 400) throw err; }
+        for (let i = 0; i < ids.length; i += 200) {
+          const r = await api(`${base}/_apis/wit/workitemsbatch?api-version=7.1`, { ids: ids.slice(i, i + 200), fields: cols });
+          r.value.forEach(it => add(it, 'TMT', tok));
+        }
+      }
+    }
+    const box = $('results'); box.style.display = 'block';
+    const rows = [...found.values()];
+    if (!rows.length) {
+      box.innerHTML = `<div class="none">No work item found for ${tokens.map(t => '“' + esc(t) + '”').join(', ')}.${tmt ? '' : ' No TMT field exists in this project, so only IDs were searched.'}</div>`;
+      setStatus('');
+    } else {
+      box.innerHTML = `<div class="tbl"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>State</th><th>Assigned to</th><th>Iteration</th><th>TMT</th><th>Matched</th><th>Changed</th></tr></thead><tbody>` +
+        rows.map(({ it, how }) => `<tr><td><a href="${link(it.id)}" target="_blank" rel="noopener">#${it.id}</a></td><td>${esc(fld(it, 'System.Title'))}</td>` +
+          `<td>${esc(fld(it, 'System.WorkItemType'))}</td><td><span class="pill">${esc(fld(it, 'System.State'))}</span></td>` +
+          `<td>${esc(fld(it, 'System.AssignedTo', 'Unassigned'))}</td><td>${esc(fld(it, 'System.IterationPath').split('\\').pop())}</td>` +
+          `<td>${esc(tmt ? fld(it, tmt, '—') : '—')}</td><td>${esc([...how].join(', '))}</td><td>${esc(fld(it, 'System.ChangedDate').slice(0, 10))}</td></tr>`).join('') + `</tbody></table></div>`;
+      setStatus(`${rows.length} result(s)`);
+    }
+  } catch (err) {
+    setStatus(err.message === 'NETWORK' ? 'Could not reach Azure DevOps (check your connection).'
+      : err.status === 401 || err.status === 203 ? 'Azure DevOps rejected the token. Check it is valid and has Work Items (Read).'
+      : `Search failed (${err.message}).`, true);
+  } finally { $('go').disabled = false; }
+}
+$('f').addEventListener('submit', run);
+$('clr').addEventListener('click', () => { $('q').value = ''; $('results').style.display = 'none'; setStatus(''); $('q').focus(); });
+</script>
+</body>
+</html>
