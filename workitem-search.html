@@ -4,11 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Work Item Search</title>
+<link rel="stylesheet" href="shell.css">
+<script src="session.js"></script>
+<script src="nav.js"></script>
 <style>
   :root { --bg:#eceff3; --card:#fff; --text:#1d2433; --muted:#667085; --border:#d9dee7; --accent:#3f51b5; --bad:#c62828; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+  .wrap { max-width: 1200px; }
   h1 { margin: 0 0 4px; font-size: 24px; }
   .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 20px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
@@ -36,7 +39,8 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<script>if (typeof ADONav !== "undefined") ADONav.render("search");</script>
+<div class="app-main"><div class="wrap">
   <h1>Work Item Search</h1>
   <div class="sub">Find any Azure DevOps work item by its ID or its TMT number, in any state. Runs in your browser.</div>
 
@@ -61,7 +65,7 @@
   </div>
 
   <div class="card" id="results" style="display:none"></div>
-</div>
+</div></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
