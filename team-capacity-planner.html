@@ -157,6 +157,12 @@
 
   .plan-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
   .plan-toolbar-note { font-size: 12px; color: var(--muted); }
+  .lock-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
+  .lock-bar.locked { border-left-color: var(--good); }
+  .lock-state { font-size: 13px; line-height: 1.55; max-width: 820px; }
+  .lock-state strong { color: #fff; }
+  .lock-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
   /* ---- sprint rebalancing suggestions ---- */
   .move-list { list-style: none; margin: 0; padding: 0; }
@@ -277,14 +283,21 @@
     </section>
 
     <section id="sec-rebalance" style="display:none">
-      <h2>🔁 Sprint rebalancing suggestions</h2>
-      <div class="meta">Items whose priority/severity now makes them urgent but aren't in the current sprint yet — with who to consider dropping from that person's current-sprint load to make room. A heads-up, not an automatic change.</div>
+      <h2>🔁 Urgent swaps this week</h2>
+      <div class="meta">Only P1 / Critical-severity items that are not in the current sprint. Everything else waits for next week, so the plan stays solid. Each swap says whether the person has room for it or what to defer to make room. A heads-up, not an automatic change.</div>
       <ul class="move-list" id="move-list"></ul>
     </section>
   </div>
 
   <!-- ============ SPRINT PLANNER ============ -->
   <div class="tab-panel" id="tab-sprint" data-tab="sprint" style="display:none">
+    <div class="lock-bar" id="lock-bar">
+      <div class="lock-state" id="lock-state">Load a team to plan the week.</div>
+      <div class="lock-actions">
+        <button type="button" id="lock-btn" onclick="lockWeek()">🔒 Lock this week's plan</button>
+        <button type="button" class="small" id="unlock-btn" onclick="unlockWeek()" style="display:none">Unlock</button>
+      </div>
+    </div>
     <div class="plan-toolbar">
       <button type="button" onclick="exportSprintPlanCsv()">⬇ Export sprint plan (CSV)</button>
       <span id="export-status" class="plan-toolbar-note">Opens in Excel. Includes the suggested week, sprint check and move/drop actions for every open item.</span>
@@ -335,17 +348,17 @@
 
     <details class="collapsible-section" id="sec-devperf" style="display:none" open>
       <summary><h2>👤 Developer weekly performance &amp; workload</h2></summary>
-      <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether each dev is assigned enough work to fill their configured hours (not literal logged time — ADO has no time clock — this is assigned-effort hours vs. capacity hours). The full version of this, with charts, lives on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
+      <div class="meta" id="meta-devperf">Estimated items/week from historical velocity vs. what's actually been completed this week, plus whether this week's PLANNED work (the Sprint Planner plan, not the whole backlog) fills their configured hours. Not literal logged time, ADO has no time clock. The full version of this, with charts, lives on <a href="dev-insight.html" style="color:var(--accent-2)">Dev Insight</a>.</div>
       <div class="table-wrap"><table><thead><tr>
         <th>Developer</th><th>Est. items/week (velocity)</th><th>Completed this week</th><th>Still assigned (open)</th><th>Meeting target?</th>
-        <th>Assigned effort (h)</th><th>vs. capacity</th><th>Filling their time?</th>
+        <th>Planned this week (h)</th><th>vs. capacity</th><th>Week fill</th>
       </tr></thead>
       <tbody id="rows-devperf"></tbody></table></div>
     </details>
 
     <details class="collapsible-section" id="sec-wip" style="display:none">
       <summary><h2>🧮 WIP per person<span class="section-count" id="count-wip"></span></h2></summary>
-      <div class="meta" id="meta-wip">Items currently in an Active / In-Progress style state, against each person's estimated weekly capacity (based on their own completion history).</div>
+      <div class="meta" id="meta-wip">Items currently in an Active / In-Progress state against the WIP limit. When someone is over, the plan order below says which to keep active and which to park, so following the planner clears the alert.</div>
       <div id="wip-cards"></div>
     </details>
   </div>
@@ -751,7 +764,10 @@ function sprintStatusBadge(s) {
 function moveIndicatorBadge(it) {
   const flags = window._moveFlags || { pull: {}, drop: {} };
   if (flags.pull[it.id]) return `<span class="metric-chip tier-bad" title="Move into ${flags.pull[it.id]}"><span class="chip-dot"></span>\u{1F501} Move to ${flags.pull[it.id]}</span>`;
-  if (flags.drop[it.id]) return `<span class="metric-chip tier-warn" title="Lower urgency — frees room for #${flags.drop[it.id]}"><span class="chip-dot"></span>⬇ Consider dropping</span>`;
+  if (flags.drop[it.id]) return `<span class="metric-chip tier-warn" title="Frees room for #${flags.drop[it.id]}"><span class="chip-dot"></span>⬇ Defer to make room</span>`;
+  const sc = (window._scoredById || {})[it.id];
+  if (sc && sc.addedAfterLock) return '<span class="metric-chip tier-bad" title="P1 / Critical item that arrived after the week was locked"><span class="chip-dot"></span>⚡ Added after lock</span>';
+  if (sc && sc.newSinceLock) return '<span class="badge badge-muted" title="Arrived after the week was locked, so it waits for next week">New → next week</span>';
   return '';
 }
 
@@ -772,6 +788,10 @@ function effortFor(it, assumedByType) {
   if (!isNaN(original) && original > 0) return { hours: original, assumed: false, source: 'Original Estimate' };
   const completed = parseFloat(field(it, 'Microsoft.VSTS.Scheduling.CompletedWork', ''));
   if (!isNaN(completed) && completed > 0) return { hours: completed, assumed: false, source: 'Completed Work' };
+  // hours frozen when this week's plan was locked, so estimates don't drift mid-week
+  if (window._lockedHours && window._lockedHours[it.id]) {
+    return { hours: window._lockedHours[it.id], assumed: true, estimated: true, source: 'locked', confidence: 'frozen', basis: "hours frozen when this week's plan was locked" };
+  }
   // nothing recorded in ADO: estimate from the topic (similar work, else complexity)
   if (window._effortModel) {
     const e = window._effortModel.estimate(it);
@@ -785,7 +805,7 @@ function effortFor(it, assumedByType) {
 function effortTag(eff) {
   if (!eff.assumed) return '';
   const tip = String(eff.basis || 'assumed').replace(/"/g, '&quot;');
-  if (eff.estimated) return ` <span class="badge badge-muted" title="${tip}">est. · ${eff.source === 'similar' ? 'similar work' : 'complexity'} · ${eff.confidence}</span>`;
+  if (eff.estimated) return ` <span class="badge badge-muted" title="${tip}">est. · ${eff.source === 'similar' ? 'similar work' : eff.source === 'locked' ? 'frozen at lock' : 'complexity'}${eff.source === 'locked' ? '' : ' · ' + eff.confidence}</span>`;
   return ` <span class="badge badge-muted" title="${tip}">assumed</span>`;
 }
 // Builds the topic-based estimator from every item that has real hours.
@@ -1134,6 +1154,10 @@ function computeAndRender() {
           testRejectedItems, testCaseWindowCount, currentIteration } = lastState;
   document.getElementById('tab-nav').style.display = 'flex';
   const assumedByType = { Bug: assumedEffortBug, Task: assumedEffortTask, _default: assumedEffortBug };
+  window._assumedByType = assumedByType;
+  const _lk = loadLock(lastState.teamName);
+  window._lockedHours = {};
+  if (_lk) _lk.items.forEach(i => { if (i.hours > 0) window._lockedHours[i.id] = i.hours; });
   buildEffortModel(openItems, completedInWindow, assumedByType);
 
   // Where did each effort figure come from? Shown on the Sprint Planner tab.
@@ -1151,8 +1175,10 @@ function computeAndRender() {
     const complexity = computeComplexity(field(it, 'System.Title'), field(it, 'System.Description'), '');
     const urgency = classifyUrgency(it, criticalPriority, criticalSeverityKeyword);
     const assignee = field(it, 'System.AssignedTo', '') || null;
-    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')) };
+    return { item: it, complexity, urgency, assignee, age: daysAgo(field(it, 'System.CreatedDate')), effort: effortFor(it, assumedByType) };
   });
+  window._scoredById = {};
+  scored.forEach(s => { window._scoredById[s.item.id] = s; });
 
   // Pool items are scored too (so criticals in the pool still show up in the
   // banner), but never enter the per-person capacity queue below.
@@ -1206,33 +1232,54 @@ function computeAndRender() {
     p.wipCount = p.open.filter(s => isInProgressItem(s.item)).length;
   });
 
-  // Schedule per person: criticals always land in "this week" on top of the
-  // queue; everything else is queued oldest/highest-urgency first within
-  // High/Medium complexity, with Low-complexity items pushed to the very
-  // back of the queue (tackled last, regardless of urgency) and spilling
-  // into later weeks once weekly capacity is used up.
+  // Schedule per person, in HOURS against the same weekly capacity the
+  // workload table uses (productive hours x days), so the plan and the
+  // under-filled / overloaded alerts can never disagree.
+  //   Week 0 = criticals first, then work already started (finish what is
+  //   active before starting more), then the rest by urgency until the
+  //   week's hours are used up; the remainder spills into later weeks.
+  // When the week is LOCKED, week 0 is frozen: exactly the locked items in
+  // their locked order, plus any new P1 / Critical item. Everything else new
+  // goes to next week or later.
+  const capHours = Math.max(1, devHoursPerDay * devDaysPerWeek);
+  window._capHours = capHours;
+  const lock = loadLock(lastState.teamName);
+  window._lock = lock;
+  const lockIdx = new Map(lock ? lock.items.map((i, n) => [i.id, n]) : []);
+  const lockedAtMs = lock ? new Date(lock.lockedAt).getTime() : 0;
   const criticalItems = [];
   Object.values(byPerson).forEach(p => {
-    const nonCritical = p.open.filter(s => !s.urgency.critical);
-    p.open.filter(s => s.urgency.critical).forEach(s => {
-      s.suggestedWeek = 0;
-      criticalItems.push(s);
-    });
-    nonCritical.sort((a, b) => {
+    const crit = p.open.filter(s => s.urgency.critical).sort((a, b) =>
+      (b.urgency.urgencyScore - a.urgency.urgencyScore) || (a.item.id - b.item.id));
+    const rest = p.open.filter(s => !s.urgency.critical);
+    const lockedRest = lock ? rest.filter(s => lockIdx.has(s.item.id)).sort((a, b) => lockIdx.get(a.item.id) - lockIdx.get(b.item.id)) : [];
+    const others = lock ? rest.filter(s => !lockIdx.has(s.item.id)) : rest;
+    others.sort((a, b) => {
+      const aIP = isInProgressItem(a.item) ? 0 : 1, bIP = isInProgressItem(b.item) ? 0 : 1;
+      if (aIP !== bIP) return aIP - bIP; // already started goes first
       const aLow = a.complexity.label === 'Low' ? 1 : 0;
       const bLow = b.complexity.label === 'Low' ? 1 : 0;
       if (aLow !== bLow) return aLow - bLow; // non-Low first, Low last
       if (b.urgency.urgencyScore !== a.urgency.urgencyScore) return b.urgency.urgencyScore - a.urgency.urgencyScore;
-      return (b.age || 0) - (a.age || 0);
+      if ((b.age || 0) !== (a.age || 0)) return (b.age || 0) - (a.age || 0);
+      return a.item.id - b.item.id; // fixed tie-break so identical items never swap places between loads
     });
-    let weekIdx = 0, consumed = 0;
-    nonCritical.forEach(s => {
-      if (consumed > 0 && consumed + s.complexity.score > p.weeklyCapacityPoints) {
-        weekIdx++; consumed = 0;
-      }
-      s.suggestedWeek = Math.min(weekIdx, weeksForward);
-      consumed += s.complexity.score;
+    crit.forEach(s => {
+      s.suggestedWeek = 0; criticalItems.push(s);
+      if (lock) { if (lockIdx.has(s.item.id)) s.locked = true; else s.addedAfterLock = true; }
     });
+    lockedRest.forEach(s => { s.suggestedWeek = 0; s.locked = true; });
+    let weekIdx = lock ? 1 : 0;
+    let consumed = lock ? 0 : crit.reduce((t, s) => t + s.effort.hours, 0);
+    const maxWeek = lock ? Math.max(1, weeksForward) : weeksForward;
+    others.forEach(s => {
+      if (consumed > 0 && consumed + s.effort.hours > capHours) { weekIdx++; consumed = 0; }
+      s.suggestedWeek = Math.min(weekIdx, maxWeek);
+      consumed += s.effort.hours;
+      if (lock && new Date(field(s.item, 'System.CreatedDate')).getTime() > lockedAtMs) s.newSinceLock = true;
+    });
+    p.queue = [...crit, ...lockedRest, ...others];
+    p.queue.forEach((s, i) => { s.queueIdx = i; });
   });
 
   // Pool criticals don't get scheduled (pool is kept separate), but they
@@ -1260,6 +1307,7 @@ function computeAndRender() {
   renderCriticalBanner(criticalItems, poolCriticals, unassignedCriticals);
   renderScrum(scored, currentIteration);
   renderMoveSuggestions(scored, currentIteration);
+  renderLockBar(lock, scored);
   renderCapacityCard({ devsCount, devHoursPerDay, devDaysPerWeek, rejectionRatePct, rejectionRateIsAssumed,
                         reworkEffortPct, completedInWindow, assumedByType, lookbackWeeks });
   renderOverview(scored, criticalItems, byPerson, wipLimit, unallocatedPoolItems);
@@ -1354,69 +1402,140 @@ function renderScrum(scored, currentIteration) {
 // ---------------------------------------------------------------------
 function computeMoveSuggestions(scored, currentIteration) {
   if (!currentIteration) return [];
+  const cap = window._capHours || 30;
   const byAssignee = {};
   scored.forEach(s => { if (s.assignee) (byAssignee[s.assignee] = byAssignee[s.assignee] || []).push(s); });
-
-  const suggestions = [];
-  scored.forEach(s => {
-    if (!s.assignee) return;
-    const inCurrent = field(s.item, 'System.IterationPath') === currentIteration.path;
-    const isUrgent = s.urgency.critical || isP1P2(s);
-    if (!isUrgent || inCurrent) return;
-    const candidates = (byAssignee[s.assignee] || []).filter(o =>
-      o !== s && field(o.item, 'System.IterationPath') === currentIteration.path && !o.urgency.critical && !isP1P2(o));
-    candidates.sort((a, b) => a.urgency.urgencyScore - b.urgency.urgencyScore);
-    suggestions.push({ pull: s, drop: candidates[0] || null });
+  const out = [];
+  Object.keys(byAssignee).forEach(name => {
+    const mine = byAssignee[name];
+    // Only P1 / Critical-severity items that are not in the current sprint.
+    const pulls = mine.filter(s => s.urgency.critical && field(s.item, 'System.IterationPath') !== currentIteration.path)
+      .sort((a, b) => (b.urgency.urgencyScore - a.urgency.urgencyScore) || (a.item.id - b.item.id));
+    if (!pulls.length) return;
+    const week0 = mine.filter(s => s.suggestedWeek === 0);
+    const planned = week0.reduce((t, s) => t + s.effort.hours, 0);
+    const over = Math.max(0, planned - cap);
+    // Something only has to give if this person's week is actually over capacity.
+    const candidates = week0.filter(o => !o.urgency.critical && !isInProgressItem(o.item))
+      .sort((a, b) => (a.urgency.urgencyScore - b.urgency.urgencyScore) || ((b.queueIdx || 0) - (a.queueIdx || 0)));
+    const drops = []; let freed = 0;
+    for (const c of candidates) { if (freed >= over) break; drops.push(c); freed += c.effort.hours; }
+    pulls.forEach((pull, i) => out.push({ pull, drops: i === 0 ? drops : [], planned, cap, over, freed, first: i === 0 }));
   });
-  // Most urgent pulls first.
-  suggestions.sort((a, b) => b.pull.urgency.urgencyScore - a.pull.urgency.urgencyScore);
-  return suggestions;
+  out.sort((a, b) => b.pull.urgency.urgencyScore - a.pull.urgency.urgencyScore);
+  return out;
 }
+const r1 = (n) => Math.round(n * 10) / 10;
+function escH(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function renderMoveSuggestions(scored, currentIteration) {
   const sec = document.getElementById('sec-rebalance');
   const list = document.getElementById('move-list');
+  sec.style.display = 'block';
   if (!currentIteration) {
-    sec.style.display = 'block';
-    list.innerHTML = '<li class="empty" style="border:none">No current sprint found for this team — nothing to rebalance against.</li>';
+    list.innerHTML = '<li class="empty" style="border:none">No current sprint found for this team — nothing to compare against.</li>';
     window._moveFlags = { pull: {}, drop: {} };
     return;
   }
-  sec.style.display = 'block';
   const suggestions = computeMoveSuggestions(scored, currentIteration);
-
-  // Stash a lookup so the open-items and sprint-planner tables can show an
-  // inline indicator on exactly the rows these suggestions are about.
   const pullMap = {}, dropMap = {};
-  suggestions.forEach(({ pull, drop }) => {
+  suggestions.forEach(({ pull, drops }) => {
     pullMap[pull.item.id] = currentIteration.name;
-    if (drop) dropMap[drop.item.id] = pull.item.id;
+    drops.forEach(d => { dropMap[d.item.id] = pull.item.id; });
   });
   window._moveFlags = { pull: pullMap, drop: dropMap };
-
   if (!suggestions.length) {
-    list.innerHTML = `<li class="empty" style="border:none">Everything urgent is already in ${currentIteration.name} — no moves needed.</li>`;
+    list.innerHTML = `<li class="empty" style="border:none">No P1 / Critical item is outside ${escH(currentIteration.name)}. The plan stands, nothing to move.</li>`;
     return;
   }
   const idLink = (it, color) => workItemBaseUrl
     ? `<a class="fl-id" href="${workItemBaseUrl}${it.id}" target="_blank" rel="noopener" style="${color ? `color:${color}` : ''}">#${it.id}</a>`
     : `<span class="fl-id">#${it.id}</span>`;
-  list.innerHTML = suggestions.map(({ pull, drop }) => {
+  list.innerHTML = suggestions.map(({ pull, drops, planned, cap, over, freed, first }) => {
     const p = pull.item;
-    const why = pull.urgency.critical ? 'now critical' : 'now P1/P2';
     const whereFrom = field(p, 'System.IterationPath') ? field(p, 'System.IterationPath').split('\\').pop() : 'Unallocated Pool';
-    const dropLine = drop
-      ? `<span class="mv-drop">To make room, consider dropping/deferring ${idLink(drop.item, 'var(--bad)')} "${field(drop.item, 'System.Title')}" — lower urgency, still in ${currentIteration.name}.</span>`
-      : `<span class="mv-drop">No lower-urgency item of ${pull.assignee}'s is in ${currentIteration.name} right now — may just need the headroom.</span>`;
+    let tail;
+    if (over <= 0) {
+      tail = `<span class="mv-drop">${escH(pull.assignee)} has room: ${r1(planned)}h planned of ${r1(cap)}h. Nothing needs to be dropped.</span>`;
+    } else if (!first) {
+      tail = `<span class="mv-drop">Same person as above: the deferral listed there covers this too.</span>`;
+    } else if (drops.length) {
+      const names = drops.map(d => `${idLink(d.item, 'var(--bad)')} "${escH(field(d.item, 'System.Title'))}" (${r1(d.effort.hours)}h)`).join(', ');
+      const short = over - freed;
+      tail = `<span class="mv-drop">${escH(pull.assignee)} is ${r1(over)}h over (${r1(planned)}h of ${r1(cap)}h). Defer ${names} to next sprint to make room${short > 0.25 ? `; still ${r1(short)}h over after that, raise it in scrum` : ''}.</span>`;
+    } else {
+      tail = `<span class="mv-drop">${escH(pull.assignee)} is ${r1(over)}h over (${r1(planned)}h of ${r1(cap)}h) and has nothing droppable left (the rest is critical or already started). Raise it in scrum.</span>`;
+    }
     return `
       <li class="move-row">
         <span class="move-icon">\u{1F501}</span>
         <div class="move-body">
-          ${idLink(p)} <strong>${field(p, 'System.Title')}</strong> (${pull.assignee}) is <span class="mv-why">${why}</span>
-          but sitting in <em>${whereFrom}</em> — move into <strong>${currentIteration.name}</strong>.
-          ${dropLine}
+          ${idLink(p)} <strong>${escH(field(p, 'System.Title'))}</strong> (${escH(pull.assignee)}) is <span class="mv-why">P1 / Critical</span>
+          but sitting in <em>${escH(whereFrom)}</em>. Move into <strong>${escH(currentIteration.name)}</strong>.
+          ${tail}
         </div>
       </li>`;
   }).join('');
+}
+
+// ---------------------------------------------------------------------
+// Weekly lock — snapshot of this week's plan (per person, in order, with
+// frozen hours). Stored in this browser only, and expires by itself when
+// the calendar week ends.
+// ---------------------------------------------------------------------
+function isoLocal(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function lockKey(team) { return 'ado-planner-lock-' + String(team || ''); }
+function loadLock(team) {
+  try {
+    const raw = storage.get(lockKey(team));
+    if (!raw) return null;
+    const l = JSON.parse(raw);
+    if (!l || !Array.isArray(l.items) || l.weekStart !== isoLocal(weekMonday(0))) return null;
+    return l;
+  } catch (e) { return null; }
+}
+function lockWeek() {
+  const status = document.getElementById('export-status');
+  if (!lastState || !window._scoredOpen) return;
+  const items = window._scoredOpen.filter(s => s.assignee && s.suggestedWeek === 0)
+    .sort((a, b) => a.assignee.localeCompare(b.assignee) || (a.queueIdx - b.queueIdx))
+    .map(s => ({ id: s.item.id, assignee: s.assignee, hours: s.effort.hours, title: field(s.item, 'System.Title') }));
+  const lock = { weekStart: isoLocal(weekMonday(0)), lockedAt: new Date().toISOString(), items };
+  storage.set(lockKey(lastState.teamName), JSON.stringify(lock));
+  if (!loadLock(lastState.teamName)) { status.textContent = 'This browser blocked saving the lock, so the plan will stay live.'; return; }
+  computeAndRender();
+}
+function unlockWeek() {
+  if (!lastState) return;
+  try { localStorage.removeItem(lockKey(lastState.teamName)); } catch (e) {}
+  computeAndRender();
+}
+function renderLockBar(lock, scored) {
+  const bar = document.getElementById('lock-bar');
+  const txt = document.getElementById('lock-state');
+  const btn = document.getElementById('lock-btn');
+  const un = document.getElementById('unlock-btn');
+  const wk = scored.filter(s => s.assignee && s.suggestedWeek === 0);
+  const hours = r1(wk.reduce((t, s) => t + s.effort.hours, 0));
+  if (!lock) {
+    bar.classList.remove('locked');
+    txt.innerHTML = `<strong>Plan is live, not locked.</strong> It is rebuilt from ADO on every load, so it moves whenever priorities, estimates or assignments change. This week currently holds <strong>${wk.length} items / ${hours}h</strong>. Lock it once sprint planning is agreed: from then on only a new P1 / Critical item can enter this week.`;
+    btn.textContent = "🔒 Lock this week's plan"; un.style.display = 'none';
+    return;
+  }
+  const openIds = new Set(scored.map(s => s.item.id));
+  const added = scored.filter(s => s.addedAfterLock).length;
+  const deferred = scored.filter(s => s.newSinceLock).length;
+  const done = lock.items.filter(i => !openIds.has(i.id)).length;
+  const offSprint = scored.filter(s => s.locked && s._sprintStatus && s._sprintStatus.status !== 'right').length;
+  const when = new Date(lock.lockedAt).toLocaleString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  bar.classList.add('locked');
+  txt.innerHTML = `<strong>🔒 This week is locked</strong> (${when}): ${lock.items.length} items / ${r1(lock.items.reduce((t, i) => t + (i.hours || 0), 0))}h committed. ` +
+    `Since then: <strong>${done}</strong> finished, <strong>${added}</strong> urgent added (see swaps), <strong>${deferred}</strong> new non-urgent item(s) pushed to next week. ` +
+    (offSprint ? `${offSprint} locked item(s) are not in the current sprint in ADO yet. ` : '') +
+    `Next week onward is provisional and rebuilds until you lock it. The lock is saved in this browser only and expires on its own at week end.`;
+  btn.textContent = '🔒 Re-lock with current plan'; un.style.display = '';
 }
 
 // ---------------------------------------------------------------------
@@ -1473,22 +1592,29 @@ function renderDevPerf(byPerson, assumedByType, devHoursPerDay, devDaysPerWeek) 
     else if (completedThisWeek >= Math.floor(estPerWeek / 2)) badge = '<span class="badge badge-warn">Behind pace</span>';
     else badge = '<span class="badge badge-bad">Well behind pace</span>';
 
-    // Workload vs capacity — sum of assigned-item effort hours (real or
-    // assumed) against the team's configured productive hours/week. This is
-    // NOT logged time (ADO has none without a time-tracking field) — it's
-    // whether a person is assigned enough work to fill their week.
-    const assignedHours = p.open.reduce((sum, s) => sum + effortFor(s.item, assumedByType).hours, 0);
+    // Workload vs capacity — THIS WEEK'S PLANNED hours (the same plan shown on
+    // the Sprint Planner tab) against the configured productive hours. Work
+    // queued behind it is shown separately, so a long backlog no longer reads
+    // as "overloaded" when the week itself is correctly planned.
+    const planned = p.open.filter(s => s.suggestedWeek === 0);
+    const later = p.open.filter(s => s.suggestedWeek > 0);
+    const assignedHours = planned.reduce((sum, s) => sum + s.effort.hours, 0);
+    const laterHours = later.reduce((sum, s) => sum + s.effort.hours, 0);
     const pctOfCapacity = capacityHours > 0 ? Math.round((assignedHours / capacityHours) * 100) : 0;
+    const overBy = assignedHours - capacityHours;
     let fillBadge;
-    if (pctOfCapacity < 70) fillBadge = `<span class="badge badge-warn">Under-filled (${pctOfCapacity}%)</span>`;
-    else if (pctOfCapacity <= 130) fillBadge = `<span class="badge badge-good">Full (${pctOfCapacity}%)</span>`;
-    else fillBadge = `<span class="badge badge-bad">Overloaded (${pctOfCapacity}%)</span>`;
+    if (overBy > capacityHours * 0.1) {
+      const urgent = planned.filter(s => s.addedAfterLock).length;
+      fillBadge = `<span class="badge badge-bad">Over by ${r1(overBy)}h (${pctOfCapacity}%)</span> <span class="person-meta">${urgent ? urgent + ' urgent item(s) added after lock: see swaps' : 'urgent work alone fills the week'}</span>`;
+    } else if (pctOfCapacity >= 70) fillBadge = `<span class="badge badge-good">Full (${pctOfCapacity}%)</span>`;
+    else if (later.length) fillBadge = `<span class="badge badge-muted">Light (${pctOfCapacity}%)</span> <span class="person-meta">next item is too big to fit; ${later.length} queued</span>`;
+    else fillBadge = `<span class="badge badge-warn">Under-filled (${pctOfCapacity}%)</span> <span class="person-meta">nothing queued behind it</span>`;
 
     return `<tr>
       <td>${p.name}</td>
       <td>${p.hasHistory ? estPerWeek : `${estPerWeek} (default)`}</td>
       <td>${completedThisWeek}</td>
-      <td>${stillAssigned}</td>
+      <td>${stillAssigned}${later.length ? ` <span class="person-meta">(${later.length} / ${r1(laterHours)}h after this week)</span>` : ''}</td>
       <td>${badge}</td>
       <td>${Math.round(assignedHours * 10) / 10}h</td>
       <td>${Math.round(capacityHours * 10) / 10}h</td>
@@ -1607,6 +1733,13 @@ function renderWip(byPerson, wipLimit) {
     const capNote = p.hasHistory
       ? `est. weekly capacity ${Math.round(p.weeklyCapacityPoints * 10) / 10} pts (${p.throughputPerWeek}/wk avg, avg complexity ${p.avgComplexity})`
       : `est. weekly capacity ${p.weeklyCapacityPoints} pts (no completion history in last ${lastState.lookbackWeeks}w — using default)`;
+    let advice = '';
+    if (over && p.queue) {
+      const active = p.queue.filter(s => isInProgressItem(s.item));
+      const keep = active.slice(0, wipLimit), park = active.slice(wipLimit);
+      const idl = (s) => '#' + s.item.id;
+      advice = `<div class="person-meta" style="margin-top:8px">Plan order says keep <strong>${keep.map(idl).join(', ')}</strong> active and park <strong>${park.map(s => idl(s) + (s.suggestedWeek > 0 ? ' (not planned this week, set back to New)' : ' (planned later this week, start once one above is done)')).join(', ')}</strong>.</div>`;
+    }
     return `<div class="person-card">
       <div class="person-head">
         <div>
@@ -1619,6 +1752,7 @@ function renderWip(byPerson, wipLimit) {
         </div>
       </div>
       <div class="wip-bar-track"><div class="wip-bar-fill ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+      ${advice}
     </div>`;
   }).join('');
 }
@@ -1765,7 +1899,7 @@ function renderWeekGroups(assignedScored) {
   });
   const weekIndices = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
   document.getElementById('week-groups').innerHTML = weekIndices.map(w => {
-    const items = byWeek[w].sort((a, b) => (b.urgency.critical - a.urgency.critical) || (b.urgency.urgencyScore - a.urgency.urgencyScore));
+    const items = byWeek[w].sort((a, b) => a.assignee.localeCompare(b.assignee) || ((a.queueIdx || 0) - (b.queueIdx || 0)));
     const rows = items.map(s => {
       const it = s.item;
       const idCell = workItemBaseUrl
@@ -1773,6 +1907,7 @@ function renderWeekGroups(assignedScored) {
         : `#${it.id}`;
       const critBadge = s.urgency.critical ? ' <span class="badge badge-bad">Critical</span>' : '';
       return `<tr>
+        <td>${(s.queueIdx || 0) + 1}</td>
         <td>${idCell}</td>
         <td>${field(it, 'System.Title')}${critBadge}</td>
         <td>${s.assignee}</td>
@@ -1783,8 +1918,8 @@ function renderWeekGroups(assignedScored) {
       </tr>`;
     }).join('');
     return `<div class="week-group">
-      <div class="week-head"><h3>${weekLabel(w)}</h3><span class="cap-note">${items.length} item(s)</span></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>In right sprint? / Sprint action</th></tr></thead>
+      <div class="week-head"><h3>${weekLabel(w)}</h3><span class="cap-note">${items.length} item(s) · ${r1(items.reduce((t, s) => t + s.effort.hours, 0))}h${w === 0 ? (window._lock ? ' · 🔒 locked' : ' · live, not locked') : ' · provisional, rebuilt until you lock it'}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Order</th><th>ID</th><th>Title</th><th>Assigned To</th><th>Priority</th><th>Severity</th><th>Complexity</th><th>In right sprint? / Sprint action</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     </div>`;
   }).join('');
@@ -1878,24 +2013,26 @@ function buildSprintPlanCsv() {
     if (!!b.urgency.critical !== !!a.urgency.critical) return (b.urgency.critical ? 1 : 0) - (a.urgency.critical ? 1 : 0);
     return b.urgency.urgencyScore - a.urgency.urgencyScore;
   });
-  const header = ['Suggested week', 'Week commencing', 'ID', 'Type', 'Title', 'State', 'Assigned To', 'Priority', 'Severity',
-    'Critical', 'Effort (h)', 'Effort source', 'Effort basis', 'Complexity', 'Current sprint', 'Sprint check', 'Sprint action', 'Due date', 'Link'];
+  const header = ['Suggested week', 'Week commencing', 'Order', 'ID', 'Type', 'Title', 'State', 'Assigned To', 'Priority', 'Severity',
+    'Critical', 'Effort (h)', 'Effort source', 'Effort basis', 'Complexity', 'Current sprint', 'Sprint check', 'Sprint action', 'Plan status', 'Due date', 'Link'];
   const rows = scored.map(s => {
     const it = s.item;
     const eff = effortFor(it, assumedByType);
     const path = field(it, 'System.IterationPath', '');
     let action = '';
     if (flags.pull[it.id]) action = `Move to ${flags.pull[it.id]}`;
-    else if (flags.drop[it.id]) action = `Consider dropping (frees room for #${flags.drop[it.id]})`;
+    else if (flags.drop[it.id]) action = `Defer to make room for #${flags.drop[it.id]}`;
+    const planStatus = !window._lock ? 'Live (not locked)' : s.addedAfterLock ? 'Added after lock' : s.locked ? 'Locked' : s.newSinceLock ? 'New since lock (next week)' : (s.suggestedWeek > 0 ? 'Provisional' : '');
     const hasWeek = s.suggestedWeek != null && s.assignee;
     return [
       hasWeek ? weekLabel(s.suggestedWeek) : (s.assignee ? '' : 'Unassigned'),
       hasWeek ? weekMonday(s.suggestedWeek).toISOString().slice(0, 10) : '',
+      hasWeek ? (s.queueIdx || 0) + 1 : '',
       it.id, field(it, 'System.WorkItemType'), field(it, 'System.Title'), field(it, 'System.State'),
       s.assignee || 'Unassigned', s.urgency.priorityRaw || '', s.urgency.severityRaw || '',
       s.urgency.critical ? 'Yes' : 'No', eff.hours, eff.assumed ? (eff.estimated ? `Estimated (${eff.source}, ${eff.confidence})` : 'Assumed') : 'ADO', eff.assumed ? (eff.basis || '') : '',
       `${s.complexity.label} (${s.complexity.score})`,
-      path ? path.split('\\').pop() : '', statusText(s), action,
+      path ? path.split('\\').pop() : '', statusText(s), action, planStatus,
       (field(it, 'Microsoft.VSTS.Scheduling.DueDate', '') || '').slice(0, 10),
       workItemBaseUrl ? `${workItemBaseUrl}${it.id}` : '',
     ];
